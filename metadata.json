@@ -1,0 +1,6 @@
+{
+  "description": "A YouTube music lyrics quiz that plays a music video and pauses intermittently to quiz the user on the lyrics.",
+  "prompt": "a Youtube music lyrics quiz that plays the mv and pauses intermittently to quiz the user then continues playback. my gemini api key has been configured to use the Youtube Data v3 API so use process.env.API_KEY for both gemini and youtube api.\n",
+  "requestFramePermissions": [],
+  "name": "App"
+}
