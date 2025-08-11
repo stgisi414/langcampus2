@@ -248,6 +248,7 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('Lana Del Rey - Video Games');
   const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
+  const [videoDuration, setVideoDuration] = useState(0);
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isQuizActive, setIsQuizActive] = useState(false);
@@ -262,7 +263,7 @@ const App: React.FC = () => {
   // --- REFS ---
   const playerRef = useRef<any>(null); // YT.Player
   const timeCheckIntervalRef = useRef<number | null>(null);
-  
+
   // --- LIFECYCLE ---
    useEffect(() => {
     const styleTag = document.createElement('style');
@@ -371,13 +372,36 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSelectVideo = (video: YouTubeVideo) => {
+  const fetchVideoDuration = async (videoId: string) => {
+    try {
+      const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoId}&key=${API_KEY}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch video duration.');
+      }
+      const data = await response.json();
+      const duration = data.items[0].contentDetails.duration;
+      // Convert ISO 8601 duration to seconds
+      const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+      if (!match) return 0;
+      const hours = (parseInt(match[1]) || 0);
+      const minutes = (parseInt(match[2]) || 0);
+      const seconds = (parseInt(match[3]) || 0);
+      return hours * 3600 + minutes * 60 + seconds;
+    } catch (error) {
+      console.error(error);
+      return 0; // Return 0 if duration fetch fails
+    }
+  };
+
+  const handleSelectVideo = async (video: YouTubeVideo) => {
     setSelectedVideo(video);
+    const duration = await fetchVideoDuration(video.id.videoId);
+    setVideoDuration(duration);
     setGameState('QUIZ');
   };
   
   const handleStartQuiz = async () => {
-    if (!selectedVideo) return;
+    if (!selectedVideo || videoDuration === 0) return;
     setLoading(true);
     setError('');
     try {
@@ -403,7 +427,7 @@ const App: React.FC = () => {
             required: ["questions"],
         };
 
-        const prompt = `You are a quiz generator for a YouTube music video lyrics game. Given the song title: "${selectedVideo.snippet.title}", generate 5 multiple-choice lyric questions. Provide a timestamp in seconds for when to pause, the preceding lyric, the question itself (as a fill-in-the-blank), 4 options, and the correct answer. Ensure timestamps are spread out and logical for a music video.`;
+        const prompt = `You are a quiz generator for a YouTube music video lyrics game. Given the song title: "${selectedVideo.snippet.title}" and its duration of ${videoDuration} seconds, generate 5 multiple-choice lyric questions. Provide a timestamp in seconds for when to pause, the preceding lyric, the question itself (as a fill-in-the-blank), 4 options, and the correct answer. Ensure timestamps are spread out logically throughout the video's duration.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -471,6 +495,7 @@ const App: React.FC = () => {
     setSearchTerm('');
     setSearchResults([]);
     setSelectedVideo(null);
+    setVideoDuration(0);
     setQuiz([]);
     setCurrentQuestionIndex(0);
     setIsQuizActive(false);
@@ -515,7 +540,7 @@ const App: React.FC = () => {
                 )}
                 {!isQuizActive && !loading && !error && (
                     <div className="quiz-controls">
-                         <button className="action-button" onClick={handleStartQuiz} disabled={!isYouTubeApiReady}>
+                         <button className="action-button" onClick={handleStartQuiz} disabled={!isYouTubeApiReady || videoDuration === 0}>
                             {isYouTubeApiReady ? 'Start Quiz' : 'Player Loading...'}
                          </button>
                     </div>
