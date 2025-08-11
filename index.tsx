@@ -307,6 +307,7 @@ const App: React.FC = () => {
   const [language, setLanguage] = useState('English');
   const supportedLanguages = ['English', 'Spanish', 'French', 'German', 'Japanese', 'Korean'];
   const [showPlayerControls, setShowPlayerControls] = useState(false);
+  const [showEndScreen, setShowEndScreen] = useState(false);
 
 
   // --- REFS ---
@@ -384,7 +385,7 @@ const App: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-        const videoUrl = `http://googleusercontent.com/youtube.com/watch?v=${selectedVideo.id.videoId}`;
+        const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
         
         const schema = {
             type: Type.OBJECT,
@@ -420,11 +421,12 @@ const App: React.FC = () => {
             IMPORTANT:
             1. The questions must be literal and verifiable from the lyrics.
             2. Provide an accurate timestamp for when each question should appear.
-            3. The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.`
+            3. The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
+            4. Ensure all four options are unique and one is the clear correct answer.`
         };
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash',
             contents: [{ parts: [videoPart, textPart] }],
             config: {
                 responseMimeType: 'application/json',
@@ -459,7 +461,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const currentTime = await playerRef.current.getCurrentTime();
+    const currentTime = Number(await playerRef.current.getCurrentTime());
     const currentQuestion = quiz[currentQuestionIndex];
 
     if (!currentQuestion) {
@@ -491,17 +493,16 @@ const App: React.FC = () => {
         } else {
             setIsQuizActive(false);
             setGameState('END');
-            setShowPlayerControls(true);
+            setShowEndScreen(true);
             playerRef.current?.pauseVideo();
         }
     }, 2000); 
   };
 
   const handleFinishListening = () => {
-    setGameState('QUIZ');
-    setTimeout(() => {
-        playerRef.current?.playVideo();
-    }, 100);
+    setShowEndScreen(false);
+    setShowPlayerControls(true);
+    playerRef.current?.playVideo();
   };
   
   const handleReset = () => {
@@ -517,11 +518,105 @@ const App: React.FC = () => {
     setGameState('SEARCH');
     setError('');
     setShowPlayerControls(false);
+    setShowEndScreen(false);
   };
 
   // --- RENDER ---
+  const renderQuizArea = () => {
+    const playerOptions = {
+        height: '100%',
+        width: '100%',
+        playerVars: {
+          playsinline: 1,
+          controls: showPlayerControls ? 1 : 0,
+          rel: 0,
+          modestbranding: 1,
+        },
+    };
+
+    const currentQuestion = quiz[currentQuestionIndex];
+
+    return (
+        <div className="quiz-area">
+            {selectedVideo && (
+                <YouTube
+                    videoId={selectedVideo.id.videoId}
+                    opts={playerOptions}
+                    onReady={onPlayerReady}
+                    className="youtube-container"
+                />
+            )}
+            
+            {loading && gameState === 'QUIZ' && (
+                <div className="quiz-overlay visible">
+                    <div className="loader"></div>
+                    <p>Generating your quiz...</p>
+                </div>
+            )}
+            
+            {!isQuizActive && gameState === 'QUIZ' && !loading && !error && (
+                <div className="quiz-controls">
+                     <button className="action-button" onClick={handleStartQuiz} disabled={!isPlayerReady || loading}>
+                        {isPlayerReady ? 'Start Quiz' : 'Player Loading...'}
+                     </button>
+                </div>
+            )}
+            
+             {error && (
+                <div className="quiz-overlay visible">
+                    <p className="error-message">{error}</p>
+                    <button className="action-button" onClick={handleReset}>Try Another Song</button>
+                </div>
+            )}
+
+            {isPausedForQuiz && currentQuestion && (
+                <div className={`quiz-overlay visible`}>
+                    <p>Question {currentQuestionIndex + 1} of {quiz.length}</p>
+                    <p className="preceding-lyric">{currentQuestion.precedingLyric}</p>
+                    <h2 className="question-text">{currentQuestion.question}</h2>
+                    <div className="options-grid">
+                        {currentQuestion.options.map((option, index) => {
+                            const isCorrect = option === currentQuestion.correctAnswer;
+                            let buttonClass = 'option-button';
+                            if (answered) {
+                                if (isCorrect) buttonClass += ' correct';
+                                else buttonClass += ' incorrect';
+                            }
+                            return (
+                                <button 
+                                    key={index} 
+                                    className={buttonClass}
+                                    onClick={() => handleAnswer(option)}
+                                    disabled={answered}
+                                >
+                                    {option}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {gameState === 'END' && showEndScreen && (
+                <div className="quiz-overlay visible">
+                    <div className="final-score">
+                        <h2>Quiz Complete!</h2>
+                        <p style={{fontSize: '1.5rem'}}>Your final score is: {score} / {quiz.length}</p>
+                        <div className="button-container">
+                            <button className="action-button" onClick={handleReset}>Play Another Song</button>
+                            <button className="action-button finish-listening-button" onClick={handleFinishListening}>Finish Listening</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+  }
+
   const renderContent = () => {
-    if (loading && gameState !== 'QUIZ') return <div className="loader"></div>;
+    if (loading && (gameState === 'SEARCH' || gameState === 'RESULTS')) {
+      return <div className="loader"></div>;
+    }
     
     switch (gameState) {
       case 'RESULTS':
@@ -536,90 +631,17 @@ const App: React.FC = () => {
           </div>
         );
       case 'QUIZ':
-        const currentQuestion = quiz[currentQuestionIndex];
-        const playerOptions = {
-            height: '100%',
-            width: '100%',
-            playerVars: {
-              playsinline: 1,
-              controls: showPlayerControls ? 1 : 0,
-              rel: 0,
-              modestbranding: 1,
-            },
-        };
-
-        return (
-            <div className="quiz-area">
-                {selectedVideo && (
-                    <YouTube
-                        videoId={selectedVideo.id.videoId}
-                        opts={playerOptions}
-                        onReady={onPlayerReady}
-                        className="youtube-container"
-                    />
-                )}
-                {loading && (
-                    <div className="quiz-overlay visible">
-                        <div className="loader"></div>
-                        <p>Generating your quiz...</p>
-                    </div>
-                )}
-                {!isQuizActive && !loading && !error && !showPlayerControls && (
-                    <div className="quiz-controls">
-                         <button className="action-button" onClick={handleStartQuiz} disabled={!isPlayerReady || loading}>
-                            {isPlayerReady ? 'Start Quiz' : 'Player Loading...'}
-                         </button>
-                    </div>
-                )}
-                 {error && !loading && (
-                    <div className="quiz-overlay visible">
-                        <p className="error-message">{error}</p>
-                        <button className="action-button" onClick={handleReset}>Try Another Song</button>
-                    </div>
-                )}
-                {isPausedForQuiz && currentQuestion && (
-                    <div className={`quiz-overlay ${isPausedForQuiz ? 'visible' : ''}`}>
-                        <p className="preceding-lyric">{currentQuestion.precedingLyric}</p>
-                        <h2 className="question-text">{currentQuestion.question}</h2>
-                        <div className="options-grid">
-                            {currentQuestion.options.map((option, index) => {
-                                const isCorrect = option === currentQuestion.correctAnswer;
-                                let buttonClass = 'option-button';
-                                if (answered) {
-                                    if (isCorrect) buttonClass += ' correct';
-                                    else if (option !== quiz[currentQuestionIndex].correctAnswer) buttonClass += ' incorrect';
-                                }
-                                return (
-                                    <button 
-                                        key={index} 
-                                        className={buttonClass}
-                                        onClick={() => handleAnswer(option)}
-                                        disabled={answered}
-                                    >
-                                        {option}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
       case 'END':
-        return (
-          <div className="final-score">
-            <h2>Quiz Complete!</h2>
-            <p style={{fontSize: '1.5rem'}}>Your final score is: {score} / {quiz.length}</p>
-            <div className="button-container">
-                <button className="action-button" onClick={handleReset}>Play Another Song</button>
-                <button className="action-button finish-listening-button" onClick={handleFinishListening}>Finish Listening to Song</button>
-            </div>
-          </div>
-        );
+        return renderQuizArea();
 
       case 'SEARCH':
       default:
-        return null; 
+        return error && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+            <p className="error-message" style={{ marginBottom: 0 }}>{error}</p>
+            <button className="action-button" onClick={handleReset}>Try Again</button>
+          </div>
+        ); 
     }
   };
 
@@ -636,6 +658,7 @@ const App: React.FC = () => {
           className="language-select"
           value={language}
           onChange={(e) => setLanguage(e.target.value)}
+          disabled={gameState === 'QUIZ' || gameState === 'END'}
         >
           {supportedLanguages.map(lang => (
             <option key={lang} value={lang}>{lang}</option>
@@ -643,7 +666,7 @@ const App: React.FC = () => {
         </select>
       </div>
       
-      {gameState !== 'QUIZ' && gameState !== 'END' && (
+      {(gameState === 'SEARCH' || gameState === 'RESULTS') && (
         <div className="search-container">
           <input
             type="text"
@@ -657,13 +680,6 @@ const App: React.FC = () => {
           <button className="search-button" onClick={handleSearch} disabled={loading}>
             {loading ? '...' : 'Search'}
           </button>
-        </div>
-      )}
-
-      {error && (gameState === 'SEARCH' || gameState === 'RESULTS') && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
-          <p className="error-message" style={{ marginBottom: 0 }}>{error}</p>
-          <button className="action-button" onClick={handleReset}>Try Again</button>
         </div>
       )}
       
