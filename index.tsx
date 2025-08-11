@@ -405,7 +405,7 @@ const App: React.FC = () => {
                 headers: { 'x-api-key': SUPADATA_API_KEY }
             }),
             // Fetch video details (like description and tags) from YouTube API
-            fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${selectedVideo.id.videoId}&key=${API_KEY}`)
+            fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${selectedVideo.id.videoId}&key=${API_KEY}`)
         ]);
 
         // --- STEP 2: Process the API Responses ---
@@ -422,8 +422,10 @@ const App: React.FC = () => {
         }
         const videoDetailsData = await videoDetailsResponse.json();
         const videoSnippet = videoDetailsData.items?.[0]?.snippet || {};
+        const videoContentDetails = videoDetailsData.items?.[0]?.contentDetails || {};
         const videoDescription = videoSnippet.description || 'No description available.';
         const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
+        const videoDuration = videoContentDetails.duration; // ISO 8601 format
 
 
         // --- STEP 3: Build the Enhanced Prompt for Gemini ---
@@ -468,11 +470,12 @@ const App: React.FC = () => {
             - Video Description: "${videoDescription}"
             - Video Tags: "${videoTags}"
             - Full Song Transcript: "${fullTranscript}"
+            - Video Duration: ${videoDuration}
 
             IMPORTANT INSTRUCTIONS:
             1.  Base the quiz questions *directly* on the provided transcript.
             2.  Generate as many high-quality questions as possible and distribute them evenly throughout the song.
-            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear.
+            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear. The final timestamp MUST be less than the video's total duration.
             4.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
             5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.`
         };
@@ -562,8 +565,7 @@ const App: React.FC = () => {
     // These three lines completely exit the quiz UI state.
     setShowEndScreen(false);     // Hides the "Quiz Complete!" screen.
     setIsPausedForQuiz(false);  // Hides the final question overlay.
-    setShowPlayerControls(true);  // Shows the native YouTube player controls.
-
+    
     // This ensures the player is ready before we command it.
     if (playerRef.current && isPlayerReady) {
         // First, seek to the last recorded time.
@@ -595,10 +597,10 @@ const App: React.FC = () => {
         width: '100%',
         playerVars: {
           playsinline: 1,
-          // Use our new state to show/hide the native YouTube controls
-          controls: showPlayerControls ? 1 : 0,
+          controls: 1, // Always show controls
           rel: 0,
           modestbranding: 1,
+          origin: window.location.origin,
         },
     };
 
