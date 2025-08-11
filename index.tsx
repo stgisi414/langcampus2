@@ -4,7 +4,7 @@ import { GoogleGenAI, Part, Type } from '@google/genai';
 import YouTube from 'react-youtube';
 import type { YouTubePlayer } from 'react-youtube';
 
-// --- STYLES ---
+// --- STYLES (ASSUMED TO BE UNCHANGED) ---
 const styles = `
   .app-container {
     width: 100%;
@@ -300,19 +300,17 @@ const App: React.FC = () => {
   const [isPausedForQuiz, setIsPausedForQuiz] = useState(false);
   const [answered, setAnswered] = useState(false);
   const [score, setScore] = useState(0);
-  const [gameState, setGameState] = useState<'SEARCH' | 'RESULTS' | 'QUIZ' | 'END'>('SEARCH');
+  const [gameState, setGameState] = useState<'SEARCH' | 'RESULTS' | 'QUIZ' | 'END' | 'POST_QUIZ_PLAYBACK'>('SEARCH');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isPlayerReady, setPlayerReady] = useState(false);
   const [language, setLanguage] = useState('English');
   const supportedLanguages = ['English', 'Spanish', 'French', 'German', 'Japanese', 'Korean'];
-  const [showPlayerControls, setShowPlayerControls] = useState(false);
-  const [showEndScreen, setShowEndScreen] = useState(false);
-
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
   const timeCheckIntervalRef = useRef<number | null>(null);
+  const lastPlaybackTimeRef = useRef<number>(0);
 
   // --- LIFECYCLE ---
   useEffect(() => {
@@ -322,14 +320,21 @@ const App: React.FC = () => {
   }, []);
   
   useEffect(() => {
-    if (isQuizActive) {
-      clearInterval(timeCheckIntervalRef.current!);
-      timeCheckIntervalRef.current = window.setInterval(checkPlayerTime, 500);
-    } else {
-      clearInterval(timeCheckIntervalRef.current!);
+    // Clear any existing interval
+    if (timeCheckIntervalRef.current) {
+        clearInterval(timeCheckIntervalRef.current);
     }
-    return () => clearInterval(timeCheckIntervalRef.current!);
-  }, [isQuizActive, currentQuestionIndex]);
+    // Set a new interval only if the quiz is active and we haven't answered all questions
+    if (isQuizActive && currentQuestionIndex < quiz.length) {
+        timeCheckIntervalRef.current = window.setInterval(checkPlayerTime, 500);
+    }
+    // Cleanup function to clear the interval when the component unmounts or dependencies change
+    return () => {
+        if (timeCheckIntervalRef.current) {
+            clearInterval(timeCheckIntervalRef.current);
+        }
+    };
+  }, [isQuizActive, currentQuestionIndex, quiz.length]);
 
   // --- API & LOGIC ---
   const onPlayerReady = (event: { target: YouTubePlayer }) => {
@@ -385,14 +390,14 @@ const App: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-        const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
+        const videoUrl = `https://www.youtube.com/watch?v=$${selectedVideo.id.videoId}`;
         
         const schema = {
             type: Type.OBJECT,
             properties: {
                 questions: {
                     type: Type.ARRAY,
-                    description: "An array of 5 quiz questions based on the song's lyrics, including timestamps.",
+                    description: "An array of quiz questions based on the song's lyrics, including timestamps.",
                     items: {
                         type: Type.OBJECT,
                         properties: {
@@ -417,12 +422,12 @@ const App: React.FC = () => {
         };
         
         const textPart: Part = {
-            text: `Analyze this music video. Create exactly 5 fill-in-the-blank quiz questions based *directly* on the lyrics heard in the song.
+            text: `Analyze this music video. Generate as many high-quality, fill-in-the-blank quiz questions as possible based *directly* on the lyrics.
             IMPORTANT:
-            1. The questions must be literal and verifiable from the lyrics.
-            2. Provide an accurate timestamp for when each question should appear.
-            3. The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
-            4. Ensure all four options are unique and one is the clear correct answer.`
+            1.  The questions must be literal and verifiable from the lyrics.
+            2.  Provide an accurate timestamp for when each question should appear. Distribute the questions throughout the song.
+            3.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
+            4.  Ensure all four options are unique and one is the clear correct answer.`
         };
 
         const response = await ai.models.generateContent({
@@ -457,17 +462,13 @@ const App: React.FC = () => {
   };
 
   const checkPlayerTime = async () => {
-    if (!playerRef.current || !isPlayerReady || isPausedForQuiz) {
+    if (!playerRef.current || !isPlayerReady || isPausedForQuiz || !quiz[currentQuestionIndex]) {
       return;
     }
 
     const currentTime = Number(await playerRef.current.getCurrentTime());
+    lastPlaybackTimeRef.current = currentTime; // Continuously update last known time
     const currentQuestion = quiz[currentQuestionIndex];
-
-    if (!currentQuestion) {
-      setIsQuizActive(false); 
-      return;
-    }
 
     if (currentTime >= currentQuestion.timestamp) {
       playerRef.current.pauseVideo();
@@ -493,16 +494,19 @@ const App: React.FC = () => {
         } else {
             setIsQuizActive(false);
             setGameState('END');
-            setShowEndScreen(true);
             playerRef.current?.pauseVideo();
         }
     }, 2000); 
   };
 
   const handleFinishListening = () => {
-    setShowEndScreen(false);
-    setShowPlayerControls(true);
-    playerRef.current?.playVideo();
+    setGameState('POST_QUIZ_PLAYBACK');
+    // Ensure player is ready before seeking and playing
+    if (playerRef.current && isPlayerReady) {
+        // Seek to the last known time and then play
+        playerRef.current.seekTo(lastPlaybackTimeRef.current, true);
+        playerRef.current.playVideo();
+    }
   };
   
   const handleReset = () => {
@@ -517,8 +521,7 @@ const App: React.FC = () => {
     setScore(0);
     setGameState('SEARCH');
     setError('');
-    setShowPlayerControls(false);
-    setShowEndScreen(false);
+    lastPlaybackTimeRef.current = 0;
   };
 
   // --- RENDER ---
@@ -528,7 +531,7 @@ const App: React.FC = () => {
         width: '100%',
         playerVars: {
           playsinline: 1,
-          controls: showPlayerControls ? 1 : 0,
+          controls: gameState === 'POST_QUIZ_PLAYBACK' ? 1 : 0, // Show controls only when explicitly finishing listening
           rel: 0,
           modestbranding: 1,
         },
@@ -562,7 +565,7 @@ const App: React.FC = () => {
                 </div>
             )}
             
-             {error && (
+             {error && gameState !== 'POST_QUIZ_PLAYBACK' && (
                 <div className="quiz-overlay visible">
                     <p className="error-message">{error}</p>
                     <button className="action-button" onClick={handleReset}>Try Another Song</button>
@@ -597,7 +600,7 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            {gameState === 'END' && showEndScreen && (
+            {gameState === 'END' && (
                 <div className="quiz-overlay visible">
                     <div className="final-score">
                         <h2>Quiz Complete!</h2>
@@ -632,6 +635,7 @@ const App: React.FC = () => {
         );
       case 'QUIZ':
       case 'END':
+      case 'POST_QUIZ_PLAYBACK':
         return renderQuizArea();
 
       case 'SEARCH':
@@ -658,7 +662,7 @@ const App: React.FC = () => {
           className="language-select"
           value={language}
           onChange={(e) => setLanguage(e.target.value)}
-          disabled={gameState === 'QUIZ' || gameState === 'END'}
+          disabled={gameState === 'QUIZ' || gameState === 'END' || gameState === 'POST_QUIZ_PLAYBACK'}
         >
           {supportedLanguages.map(lang => (
             <option key={lang} value={lang}>{lang}</option>
