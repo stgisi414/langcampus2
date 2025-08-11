@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Part, Type } from '@google/genai';
+import YouTube from 'react-youtube';
+import type { YouTubePlayer } from 'react-youtube';
 
 // --- STYLES ---
 const styles = `
@@ -18,6 +20,23 @@ const styles = `
     font-size: 2.5rem;
     margin-bottom: 0;
     font-weight: 700;
+  }
+
+  .language-selector-container {
+    margin: -1rem 0 1rem 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .language-select {
+    background-color: var(--surface-color);
+    color: var(--text-primary);
+    border: 1px solid var(--primary-color);
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.9rem;
   }
 
   .search-container {
@@ -121,7 +140,7 @@ const styles = `
     overflow: hidden;
   }
 
-  #player {
+  .youtube-container {
     width: 100%;
     height: 100%;
   }
@@ -243,12 +262,21 @@ if (!API_KEY) {
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
+// --- UTILITY FUNCTIONS ---
+const shuffleArray = <T,>(array: T[]): T[] => {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+};
+
 const App: React.FC = () => {
   // --- STATE ---
   const [searchTerm, setSearchTerm] = useState('Lana Del Rey - Video Games');
   const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
-  const [videoDuration, setVideoDuration] = useState(0);
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isQuizActive, setIsQuizActive] = useState(false);
@@ -258,81 +286,35 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<'SEARCH' | 'RESULTS' | 'QUIZ' | 'END'>('SEARCH');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isYouTubeApiReady, setYouTubeApiReady] = useState(false);
+  const [isPlayerReady, setPlayerReady] = useState(false);
+  const [language, setLanguage] = useState('English');
+  const supportedLanguages = ['English', 'Spanish', 'French', 'German', 'Japanese', 'Korean'];
 
   // --- REFS ---
-  const playerRef = useRef<any>(null); // YT.Player
+  const playerRef = useRef<YouTubePlayer | null>(null);
   const timeCheckIntervalRef = useRef<number | null>(null);
 
   // --- LIFECYCLE ---
-   useEffect(() => {
+  useEffect(() => {
     const styleTag = document.createElement('style');
     styleTag.innerHTML = styles;
     document.head.appendChild(styleTag);
-
-    // Load YouTube IFrame API once
-    if (!(window as any).YT) {
-      const tag = document.createElement('script');
-      tag.src = "https://www.youtube.com/iframe_api";
-      document.head.appendChild(tag);
-      
-      (window as any).onYouTubeIframeAPIReady = () => {
-        setYouTubeApiReady(true);
-      };
-    } else {
-        setYouTubeApiReady(true);
-    }
-
-    return () => {
-      // Clean up the global callback
-      (window as any).onYouTubeIframeAPIReady = null;
-    }
   }, []);
-
-  useEffect(() => {
-    if (selectedVideo && isYouTubeApiReady) {
-        createPlayer(selectedVideo.id.videoId);
-    }
-     // Cleanup player on component unmount or when selectedVideo changes
-    return () => {
-        if (playerRef.current) {
-            playerRef.current.destroy();
-            playerRef.current = null;
-        }
-        clearInterval(timeCheckIntervalRef.current!);
-    };
-  }, [selectedVideo, isYouTubeApiReady]);
   
   useEffect(() => {
-    if (isQuizActive && playerRef.current) {
-        timeCheckIntervalRef.current = window.setInterval(checkPlayerTime, 500);
+    if (isQuizActive) {
+      clearInterval(timeCheckIntervalRef.current!);
+      timeCheckIntervalRef.current = window.setInterval(checkPlayerTime, 500);
     } else {
-        clearInterval(timeCheckIntervalRef.current!);
+      clearInterval(timeCheckIntervalRef.current!);
     }
     return () => clearInterval(timeCheckIntervalRef.current!);
-  }, [isQuizActive, playerRef.current]);
+  }, [isQuizActive, currentQuestionIndex]);
 
   // --- API & LOGIC ---
-  const createPlayer = (videoId: string) => {
-    if (playerRef.current) {
-        playerRef.current.destroy();
-    }
-    playerRef.current = new (window as any).YT.Player('player', {
-      videoId: videoId,
-      playerVars: {
-        'playsinline': 1,
-        'controls': 0, // Hide default controls
-        'rel': 0,
-        'modestbranding': 1,
-      },
-      events: {
-        'onReady': onPlayerReady
-      }
-    });
-  };
-
-  const onPlayerReady = (event: any) => {
-    // Player is ready, but we wait for "Start Quiz" to play
+  const onPlayerReady = (event: { target: YouTubePlayer }) => {
+    playerRef.current = event.target;
+    setPlayerReady(true);
   };
 
   const handleSearch = async () => {
@@ -366,103 +348,110 @@ const App: React.FC = () => {
       }
     } catch (err: any) {
       setError(err.message || 'An unknown error occurred during search.');
-      setGameState('SEARCH'); // Go back to search on error
+      setGameState('SEARCH'); 
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchVideoDuration = async (videoId: string) => {
-    try {
-      const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoId}&key=${API_KEY}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch video duration.');
-      }
-      const data = await response.json();
-      const duration = data.items[0].contentDetails.duration;
-      // Convert ISO 8601 duration to seconds
-      const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
-      if (!match) return 0;
-      const hours = (parseInt(match[1]) || 0);
-      const minutes = (parseInt(match[2]) || 0);
-      const seconds = (parseInt(match[3]) || 0);
-      return hours * 3600 + minutes * 60 + seconds;
-    } catch (error) {
-      console.error(error);
-      return 0; // Return 0 if duration fetch fails
-    }
-  };
-
-  const handleSelectVideo = async (video: YouTubeVideo) => {
+  const handleSelectVideo = (video: YouTubeVideo) => {
+    setPlayerReady(false); 
     setSelectedVideo(video);
-    const duration = await fetchVideoDuration(video.id.videoId);
-    setVideoDuration(duration);
     setGameState('QUIZ');
   };
   
   const handleStartQuiz = async () => {
-    if (!selectedVideo || videoDuration === 0) return;
+    if (!selectedVideo || !isPlayerReady || !playerRef.current) return;
     setLoading(true);
     setError('');
     try {
+        // **FIXED**: Use the standard public YouTube URL
+        const videoUrl = `http://googleusercontent.com/youtube.com/watch?v=${selectedVideo.id.videoId}`;
+        
         const schema = {
             type: Type.OBJECT,
             properties: {
                 questions: {
-                type: Type.ARRAY,
-                description: "An array of 5 quiz questions based on the song's lyrics.",
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                    timestamp: { type: Type.INTEGER, description: "Time in seconds to pause the video for the question." },
-                    precedingLyric: { type: Type.STRING, description: "The lyric line immediately before the question." },
-                    question: { type: Type.STRING, description: "The lyric with a blank to be filled (e.g., '...to the old town ____')." },
-                    options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "An array of 4 multiple-choice options." },
-                    correctAnswer: { type: Type.STRING, description: "The correct answer from the options." },
+                    type: Type.ARRAY,
+                    description: "An array of 5 quiz questions based on the song's lyrics, including timestamps.",
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            timestamp: { type: Type.INTEGER, description: "Time in seconds to pause the video for the question." },
+                            precedingLyric: { type: Type.STRING, description: "The lyric line immediately before the question." },
+                            question: { type: Type.STRING, description: "The lyric with a blank to be filled (e.g., '...to the old town ____')." },
+                            options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "An array of 4 multiple-choice options." },
+                            correctAnswer: { type: Type.STRING, description: "The correct answer from the options." },
+                        },
+                        required: ["timestamp", "precedingLyric", "question", "options", "correctAnswer"],
                     },
-                    required: ["timestamp", "precedingLyric", "question", "options", "correctAnswer"],
-                },
                 },
             },
             required: ["questions"],
         };
 
-        const prompt = `You are a quiz generator for a YouTube music video lyrics game. Given the song title: "${selectedVideo.snippet.title}" and its duration of ${videoDuration} seconds, generate 5 multiple-choice lyric questions. Provide a timestamp in seconds for when to pause, the preceding lyric, the question itself (as a fill-in-the-blank), 4 options, and the correct answer. Ensure timestamps are spread out logically throughout the video's duration.`;
+        const videoPart: Part = {
+            fileData: {
+                mimeType: 'video/youtube',
+                fileUri: videoUrl
+            }
+        };
+        
+        const textPart: Part = {
+            text: `Analyze this music video. Create exactly 5 fill-in-the-blank quiz questions based *directly* on the lyrics heard in the song.
+            IMPORTANT:
+            1. The questions must be literal and verifiable from the lyrics.
+            2. Provide an accurate timestamp for when each question should appear.
+            3. The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.`
+        };
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: prompt,
+            contents: [{ parts: [videoPart, textPart] }],
             config: {
                 responseMimeType: 'application/json',
                 responseSchema: schema,
             },
         });
         
-        const quizData = JSON.parse(response.text);
+        const quizData: { questions: QuizQuestion[] } = JSON.parse(response.text);
+
         if (quizData.questions && quizData.questions.length > 0) {
-            setQuiz(quizData.questions.sort((a: QuizQuestion, b: QuizQuestion) => a.timestamp - b.timestamp));
+            const processedQuiz = quizData.questions.map(q => ({
+                ...q,
+                options: shuffleArray(q.options)
+            })).sort((a, b) => a.timestamp - b.timestamp);
+            
+            setQuiz(processedQuiz);
             setIsQuizActive(true);
             playerRef.current?.playVideo();
         } else {
-            throw new Error("Could not generate a valid quiz. Please try another video.");
+            throw new Error("Could not generate a valid quiz from the video. Please try another song.");
         }
     } catch (err: any) {
-        setError(err.message || 'Failed to generate quiz. The song might be instrumental or have unclear lyrics.');
+        setError(err.message || 'Failed to generate quiz. The AI may not have been able to analyze this video.');
         setIsQuizActive(false);
     } finally {
         setLoading(false);
     }
   };
 
-  const checkPlayerTime = () => {
-    if (!playerRef.current || typeof playerRef.current.getCurrentTime !== 'function' || !quiz.length || isPausedForQuiz) return;
-    
-    const currentTime = playerRef.current.getCurrentTime();
+  const checkPlayerTime = async () => {
+    if (!playerRef.current || !isPlayerReady || isPausedForQuiz) {
+      return;
+    }
+
+    const currentTime = await playerRef.current.getCurrentTime();
     const currentQuestion = quiz[currentQuestionIndex];
 
-    if (currentQuestion && currentTime >= currentQuestion.timestamp) {
-        playerRef.current.pauseVideo();
-        setIsPausedForQuiz(true);
+    if (!currentQuestion) {
+      setIsQuizActive(false); 
+      return;
+    }
+
+    if (currentTime >= currentQuestion.timestamp) {
+      playerRef.current.pauseVideo();
+      setIsPausedForQuiz(true);
     }
   };
   
@@ -476,26 +465,23 @@ const App: React.FC = () => {
 
     setTimeout(() => {
         setAnswered(false);
-        setIsPausedForQuiz(false);
-
         const nextIndex = currentQuestionIndex + 1;
         if (nextIndex < quiz.length) {
-            setCurrentQuestionIndex(nextIndex);
-            playerRef.current?.playVideo();
+          setCurrentQuestionIndex(nextIndex);
+          setIsPausedForQuiz(false); 
+          playerRef.current?.playVideo();
         } else {
-            // End of quiz
             setIsQuizActive(false);
             setGameState('END');
             playerRef.current?.stopVideo();
         }
-    }, 2000); // 2-second delay to show feedback
+    }, 2000); 
   };
   
   const handleReset = () => {
     setSearchTerm('');
     setSearchResults([]);
     setSelectedVideo(null);
-    setVideoDuration(0);
     setQuiz([]);
     setCurrentQuestionIndex(0);
     setIsQuizActive(false);
@@ -504,17 +490,12 @@ const App: React.FC = () => {
     setScore(0);
     setGameState('SEARCH');
     setError('');
-    // The player is now destroyed in the useEffect cleanup
   };
 
   // --- RENDER ---
   const renderContent = () => {
-    // This component only renders the main content area, not the persistent search bar or header
     if (loading && gameState !== 'QUIZ') return <div className="loader"></div>;
     
-    // Error is now displayed above the main content area for better visibility
-    // if (error) return <p className="error-message">{error}</p>;
-
     switch (gameState) {
       case 'RESULTS':
         return (
@@ -529,9 +510,27 @@ const App: React.FC = () => {
         );
       case 'QUIZ':
         const currentQuestion = quiz[currentQuestionIndex];
+        const playerOptions = {
+            height: '100%',
+            width: '100%',
+            playerVars: {
+              playsinline: 1,
+              controls: 0,
+              rel: 0,
+              modestbranding: 1,
+            },
+        };
+
         return (
             <div className="quiz-area">
-                <div id="player"></div>
+                {selectedVideo && (
+                    <YouTube
+                        videoId={selectedVideo.id.videoId}
+                        opts={playerOptions}
+                        onReady={onPlayerReady}
+                        className="youtube-container"
+                    />
+                )}
                 {loading && (
                     <div className="quiz-overlay visible">
                         <div className="loader"></div>
@@ -540,8 +539,8 @@ const App: React.FC = () => {
                 )}
                 {!isQuizActive && !loading && !error && (
                     <div className="quiz-controls">
-                         <button className="action-button" onClick={handleStartQuiz} disabled={!isYouTubeApiReady || videoDuration === 0}>
-                            {isYouTubeApiReady ? 'Start Quiz' : 'Player Loading...'}
+                         <button className="action-button" onClick={handleStartQuiz} disabled={!isPlayerReady || loading}>
+                            {isPlayerReady ? 'Start Quiz' : 'Player Loading...'}
                          </button>
                     </div>
                 )}
@@ -590,7 +589,7 @@ const App: React.FC = () => {
 
       case 'SEARCH':
       default:
-        return null; // Search bar and error are handled outside this function
+        return null; 
     }
   };
 
@@ -599,6 +598,20 @@ const App: React.FC = () => {
       <header>
         <h1>LyricFlow Quiz</h1>
       </header>
+
+      <div className="language-selector-container">
+        <label htmlFor="language-select">Quiz Language: </label>
+        <select
+          id="language-select"
+          className="language-select"
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+        >
+          {supportedLanguages.map(lang => (
+            <option key={lang} value={lang}>{lang}</option>
+          ))}
+        </select>
+      </div>
       
       {gameState !== 'QUIZ' && gameState !== 'END' && (
         <div className="search-container">
