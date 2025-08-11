@@ -291,7 +291,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 
 const App: React.FC = () => {
   // --- STATE ---
-  const [searchTerm, setSearchTerm] = useState('Lana Del Rey - Video Games');
+  const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
@@ -306,6 +306,8 @@ const App: React.FC = () => {
   const [isPlayerReady, setPlayerReady] = useState(false);
   const [language, setLanguage] = useState('English');
   const supportedLanguages = ['English', 'Spanish', 'French', 'German', 'Japanese', 'Korean'];
+  const [showPlayerControls, setShowPlayerControls] = useState(false);
+  const [showEndScreen, setShowEndScreen] = useState(false);
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -389,7 +391,43 @@ const App: React.FC = () => {
     if (!selectedVideo || !isPlayerReady || !playerRef.current) return;
     setLoading(true);
     setError('');
+
+    // Add your Supadata API Key here.
+    // You can get a free one from their website.
+    const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY; 
+
     try {
+        // --- STEP 1: Fetch Transcript and Video Details in Parallel ---
+
+        const [transcriptResponse, videoDetailsResponse] = await Promise.all([
+            // Fetch transcript from Supadata
+            fetch(`https://api.supadata.ai/v1/youtube/transcript?videoId=${selectedVideo.id.videoId}`, {
+                headers: { 'x-api-key': SUPADATA_API_KEY }
+            }),
+            // Fetch video details (like description and tags) from YouTube API
+            fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${selectedVideo.id.videoId}&key=${API_KEY}`)
+        ]);
+
+        // --- STEP 2: Process the API Responses ---
+
+        if (!transcriptResponse.ok) {
+            throw new Error('Failed to fetch transcript from Supadata. Check your API key and the video URL.');
+        }
+        const transcriptData = await transcriptResponse.json();
+        // Combine the transcript segments into a single string.
+        const fullTranscript = transcriptData.content?.map((segment: { text: string; }) => segment.text).join(' ') || '';
+
+        if (!videoDetailsResponse.ok) {
+            throw new Error('Failed to fetch video details from YouTube.');
+        }
+        const videoDetailsData = await videoDetailsResponse.json();
+        const videoSnippet = videoDetailsData.items?.[0]?.snippet || {};
+        const videoDescription = videoSnippet.description || 'No description available.';
+        const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
+
+
+        // --- STEP 3: Build the Enhanced Prompt for Gemini ---
+
         const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
         
         const schema = {
@@ -421,14 +459,25 @@ const App: React.FC = () => {
             }
         };
         
+        // This new text prompt includes the transcript and video details.
         const textPart: Part = {
-            text: `Analyze this music video. Generate as many high-quality, fill-in-the-blank quiz questions as possible based *directly* on the lyrics.
-            IMPORTANT:
-            1.  The questions must be literal and verifiable from the lyrics.
-            2.  Provide an accurate timestamp for when each question should appear. Distribute the questions throughout the song.
-            3.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
-            4.  Ensure all four options are unique and one is the clear correct answer.`
+            text: `Please create a fill-in-the-blank lyrics quiz for the provided music video.
+            
+            Here is additional context for the video:
+            - Video Title: "${selectedVideo.snippet.title}"
+            - Video Description: "${videoDescription}"
+            - Video Tags: "${videoTags}"
+            - Full Song Transcript: "${fullTranscript}"
+
+            IMPORTANT INSTRUCTIONS:
+            1.  Base the quiz questions *directly* on the provided transcript.
+            2.  Generate as many high-quality questions as possible and distribute them evenly throughout the song.
+            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear.
+            4.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
+            5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.`
         };
+
+        // --- STEP 4: Generate the Quiz with Gemini ---
 
         const response = await ai.models.generateContent({
             model: 'gemini-1.5-flash',
@@ -451,7 +500,7 @@ const App: React.FC = () => {
             setIsQuizActive(true);
             playerRef.current?.playVideo();
         } else {
-            throw new Error("Could not generate a valid quiz from the video. Please try another song.");
+            throw new Error("Could not generate a valid quiz from the video. The transcript might be unavailable.");
         }
     } catch (err: any) {
         setError(err.message || 'Failed to generate quiz. The AI may not have been able to analyze this video.');
@@ -462,7 +511,7 @@ const App: React.FC = () => {
   };
 
   const checkPlayerTime = async () => {
-    if (!playerRef.current || !isPlayerReady || isPausedForQuiz || !quiz[currentQuestionIndex]) {
+    if (!playerRef.current || !isPlayerReady || isPausedForQuiz) {
       return;
     }
 
@@ -470,11 +519,16 @@ const App: React.FC = () => {
     lastPlaybackTimeRef.current = currentTime; // Continuously update last known time
     const currentQuestion = quiz[currentQuestionIndex];
 
+    if (!currentQuestion) {
+      setIsQuizActive(false); 
+      return;
+    }
+
     if (currentTime >= currentQuestion.timestamp) {
       playerRef.current.pauseVideo();
       setIsPausedForQuiz(true);
     }
-  };
+};
   
   const handleAnswer = (option: string) => {
     if (answered) return;
@@ -492,19 +546,29 @@ const App: React.FC = () => {
           setIsPausedForQuiz(false); 
           playerRef.current?.playVideo();
         } else {
-            setIsQuizActive(false);
-            setGameState('END');
-            playerRef.current?.pauseVideo();
+          setIsQuizActive(false);
+          setGameState('END');
+          setShowEndScreen(true); // <-- ADD THIS LINE
+          playerRef.current?.pauseVideo();
         }
     }, 2000); 
   };
 
   const handleFinishListening = () => {
-    setGameState('POST_QUIZ_PLAYBACK');
-    // Ensure player is ready before seeking and playing
+    // Log the timestamp we are about to use. This is for debugging.
+    // You can check your browser's console (F12) to see what this value is.
+    console.log(`Attempting to seek to: ${lastPlaybackTimeRef.current}`);
+
+    // These three lines completely exit the quiz UI state.
+    setShowEndScreen(false);     // Hides the "Quiz Complete!" screen.
+    setIsPausedForQuiz(false);  // Hides the final question overlay.
+    setShowPlayerControls(true);  // Shows the native YouTube player controls.
+
+    // This ensures the player is ready before we command it.
     if (playerRef.current && isPlayerReady) {
-        // Seek to the last known time and then play
+        // First, seek to the last recorded time.
         playerRef.current.seekTo(lastPlaybackTimeRef.current, true);
+        // Then, play the video.
         playerRef.current.playVideo();
     }
   };
@@ -521,7 +585,7 @@ const App: React.FC = () => {
     setScore(0);
     setGameState('SEARCH');
     setError('');
-    lastPlaybackTimeRef.current = 0;
+    lastPlaybackTimeRef.current = 0; // Reset the stored time
   };
 
   // --- RENDER ---
@@ -531,7 +595,8 @@ const App: React.FC = () => {
         width: '100%',
         playerVars: {
           playsinline: 1,
-          controls: gameState === 'POST_QUIZ_PLAYBACK' ? 1 : 0, // Show controls only when explicitly finishing listening
+          // Use our new state to show/hide the native YouTube controls
+          controls: showPlayerControls ? 1 : 0,
           rel: 0,
           modestbranding: 1,
         },
@@ -572,7 +637,7 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            {isPausedForQuiz && currentQuestion && (
+            {isPausedForQuiz && currentQuestion && gameState !== 'POST_QUIZ_PLAYBACK' && (
                 <div className={`quiz-overlay visible`}>
                     <p>Question {currentQuestionIndex + 1} of {quiz.length}</p>
                     <p className="preceding-lyric">{currentQuestion.precedingLyric}</p>
@@ -600,7 +665,7 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            {gameState === 'END' && (
+            {gameState === 'END' && showEndScreen && (
                 <div className="quiz-overlay visible">
                     <div className="final-score">
                         <h2>Quiz Complete!</h2>
@@ -651,7 +716,7 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      <header>
+      <header onClick={handleReset} style={{ cursor: 'pointer' }}>
         <h1 style={{ letterSpacing: '-0.09925em' }}><img src="/logo.png" style={{ height: '45px', width: '45px5px', background: 'rgba(256, 256, 256, 1)', borderRadius: '50%', padding: '3px', border: '2px solid #ff0000', verticalAlign: 'middle', marginRight: '5px'}} />Langcampus</h1>
       </header>
 
@@ -673,13 +738,13 @@ const App: React.FC = () => {
       {(gameState === 'SEARCH' || gameState === 'RESULTS') && (
         <div className="search-container">
           <input
-            type="text"
-            className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search for a song or artist..."
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            aria-label="Search for a song"
+              type="text"
+              className="search-input"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search songs..."
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              aria-label="Search for a song"
           />
           <button className="search-button" onClick={handleSearch} disabled={loading}>
             {loading ? '...' : 'Search'}
