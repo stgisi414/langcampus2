@@ -72,6 +72,16 @@ const styles = `
   .search-button:hover, .action-button:hover {
     background-color: #cc0000;
   }
+
+  .finish-listening-button {
+    background-color: #333333;
+    color: #ff0000;
+    border: 1px solid #ff0000;
+  }
+
+  .finish-listening-button:hover {
+    background-color: #555555;
+  }
   
   .loader {
     border: 4px solid var(--surface-color);
@@ -234,6 +244,13 @@ const styles = `
     font-size: 2.5rem;
     color: var(--primary-color);
   }
+  
+  .button-container {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+  }
 `;
 
 // --- TYPES ---
@@ -289,6 +306,8 @@ const App: React.FC = () => {
   const [isPlayerReady, setPlayerReady] = useState(false);
   const [language, setLanguage] = useState('English');
   const supportedLanguages = ['English', 'Spanish', 'French', 'German', 'Japanese', 'Korean'];
+  const [showPlayerControls, setShowPlayerControls] = useState(false);
+
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -365,7 +384,6 @@ const App: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-        // **FIXED**: Use the standard public YouTube URL
         const videoUrl = `http://googleusercontent.com/youtube.com/watch?v=${selectedVideo.id.videoId}`;
         
         const schema = {
@@ -473,9 +491,17 @@ const App: React.FC = () => {
         } else {
             setIsQuizActive(false);
             setGameState('END');
-            playerRef.current?.stopVideo();
+            setShowPlayerControls(true);
+            playerRef.current?.pauseVideo();
         }
     }, 2000); 
+  };
+
+  const handleFinishListening = () => {
+    setGameState('QUIZ');
+    setTimeout(() => {
+        playerRef.current?.playVideo();
+    }, 100);
   };
   
   const handleReset = () => {
@@ -490,6 +516,7 @@ const App: React.FC = () => {
     setScore(0);
     setGameState('SEARCH');
     setError('');
+    setShowPlayerControls(false);
   };
 
   // --- RENDER ---
@@ -515,7 +542,7 @@ const App: React.FC = () => {
             width: '100%',
             playerVars: {
               playsinline: 1,
-              controls: 0,
+              controls: showPlayerControls ? 1 : 0,
               rel: 0,
               modestbranding: 1,
             },
@@ -537,7 +564,7 @@ const App: React.FC = () => {
                         <p>Generating your quiz...</p>
                     </div>
                 )}
-                {!isQuizActive && !loading && !error && (
+                {!isQuizActive && !loading && !error && !showPlayerControls && (
                     <div className="quiz-controls">
                          <button className="action-button" onClick={handleStartQuiz} disabled={!isPlayerReady || loading}>
                             {isPlayerReady ? 'Start Quiz' : 'Player Loading...'}
@@ -583,7 +610,10 @@ const App: React.FC = () => {
           <div className="final-score">
             <h2>Quiz Complete!</h2>
             <p style={{fontSize: '1.5rem'}}>Your final score is: {score} / {quiz.length}</p>
-            <button className="action-button" onClick={handleReset}>Play Another Song</button>
+            <div className="button-container">
+                <button className="action-button" onClick={handleReset}>Play Another Song</button>
+                <button className="action-button finish-listening-button" onClick={handleFinishListening}>Finish Listening to Song</button>
+            </div>
           </div>
         );
 
