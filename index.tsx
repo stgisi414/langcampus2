@@ -390,7 +390,7 @@ const App: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-        const videoUrl = `https://www.youtube.com/watch?v=$${selectedVideo.id.videoId}`;
+        const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
         
         const schema = {
             type: Type.OBJECT,
