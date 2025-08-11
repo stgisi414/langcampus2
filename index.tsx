@@ -257,38 +257,50 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<'SEARCH' | 'RESULTS' | 'QUIZ' | 'END'>('SEARCH');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isYouTubeApiReady, setYouTubeApiReady] = useState(false);
 
   // --- REFS ---
   const playerRef = useRef<any>(null); // YT.Player
   const timeCheckIntervalRef = useRef<number | null>(null);
   
   // --- LIFECYCLE ---
-  useEffect(() => {
+   useEffect(() => {
     const styleTag = document.createElement('style');
     styleTag.innerHTML = styles;
     document.head.appendChild(styleTag);
 
-    // Load YouTube IFrame API
+    // Load YouTube IFrame API once
     if (!(window as any).YT) {
       const tag = document.createElement('script');
       tag.src = "https://www.youtube.com/iframe_api";
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      if (firstScriptTag && firstScriptTag.parentNode) {
-          firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-      }
+      document.head.appendChild(tag);
+      
+      (window as any).onYouTubeIframeAPIReady = () => {
+        setYouTubeApiReady(true);
+      };
+    } else {
+        setYouTubeApiReady(true);
     }
-
-    (window as any).onYouTubeIframeAPIReady = () => {
-        if (selectedVideo) {
-            createPlayer(selectedVideo.id.videoId);
-        }
-    };
 
     return () => {
-      clearInterval(timeCheckIntervalRef.current!);
+      // Clean up the global callback
       (window as any).onYouTubeIframeAPIReady = null;
     }
-  }, [selectedVideo]);
+  }, []);
+
+  useEffect(() => {
+    if (selectedVideo && isYouTubeApiReady) {
+        createPlayer(selectedVideo.id.videoId);
+    }
+     // Cleanup player on component unmount or when selectedVideo changes
+    return () => {
+        if (playerRef.current) {
+            playerRef.current.destroy();
+            playerRef.current = null;
+        }
+        clearInterval(timeCheckIntervalRef.current!);
+    };
+  }, [selectedVideo, isYouTubeApiReady]);
   
   useEffect(() => {
     if (isQuizActive && playerRef.current) {
@@ -419,7 +431,7 @@ const App: React.FC = () => {
   };
 
   const checkPlayerTime = () => {
-    if (!playerRef.current || !playerRef.current.getCurrentTime || !quiz.length || isPausedForQuiz) return;
+    if (!playerRef.current || typeof playerRef.current.getCurrentTime !== 'function' || !quiz.length || isPausedForQuiz) return;
     
     const currentTime = playerRef.current.getCurrentTime();
     const currentQuestion = quiz[currentQuestionIndex];
@@ -467,10 +479,7 @@ const App: React.FC = () => {
     setScore(0);
     setGameState('SEARCH');
     setError('');
-    if (playerRef.current) {
-        playerRef.current.destroy();
-        playerRef.current = null;
-    }
+    // The player is now destroyed in the useEffect cleanup
   };
 
   // --- RENDER ---
@@ -506,7 +515,9 @@ const App: React.FC = () => {
                 )}
                 {!isQuizActive && !loading && !error && (
                     <div className="quiz-controls">
-                        <button className="action-button" onClick={handleStartQuiz}>Start Quiz</button>
+                         <button className="action-button" onClick={handleStartQuiz} disabled={!isYouTubeApiReady}>
+                            {isYouTubeApiReady ? 'Start Quiz' : 'Player Loading...'}
+                         </button>
                     </div>
                 )}
                  {error && !loading && (
