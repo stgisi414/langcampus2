@@ -2,23 +2,22 @@ import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import axios from "axios";
 
-// This is the V2 function using the official YouTube Data API.
 export const suggest = onRequest({ cors: true }, async (request, response) => {
     logger.info("Suggest function triggered", { query: request.query });
 
     try {
-        // This is the official, public API endpoint.
+        // THIS IS THE OFFICIAL, PUBLIC YOUTUBE DATA API V3 ENDPOINT
         const officialApiUrl = "https://www.googleapis.com/youtube/v3/search";
         
         const apiResponse = await axios.get(officialApiUrl, {
             params: {
-                ...request.query,
-                part: 'snippet', // Required by the YouTube API
-                type: 'video',    // We only want video suggestions
+                ...request.query, // This will include 'q' and 'key' from the frontend
+                part: 'snippet',      // Required by the YouTube API
+                type: 'video',        // We only want video suggestions
+                maxResults: 10,       // Get up to 10 suggestions
             },
         });
 
-        // Send the successful response back to the browser.
         response.status(200).send(apiResponse.data);
 
     } catch (error) {

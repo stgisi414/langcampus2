@@ -450,7 +450,7 @@ const SEARCH_HISTORY_KEY = 'langcampus_search_history';
 const parseYouTubeSuggestions = (data: any): string[] => {
   try {
     if (data && Array.isArray(data.items)) {
-      // The official API returns a list of video objects. We just want the titles.
+      // The official API returns a list of video objects. We map them to their titles.
       return data.items.map((item: any) => item.snippet.title);
     }
   } catch (e) {
@@ -608,31 +608,33 @@ const App: React.FC = () => {
     if (fetchSuggestionsAbortControllerRef.current) {
         fetchSuggestionsAbortControllerRef.current.abort();
     }
-    
+
     if (searchTerm.length > 1) {
-      console.log(`[Predictive Search Log]: Search term changed to "${searchTerm}". Debouncing API call.`);
       setIsHistoryDropdown(false);
 
       const controller = new AbortController();
       fetchSuggestionsAbortControllerRef.current = controller;
-      
+
       const timeoutId = setTimeout(async () => {
           try {
+              // CORRECTED: We now pass the API key in the request to our function
               const url = `/suggest?key=${API_KEY}&q=${encodeURIComponent(searchTerm)}`;
               console.log(`[Predictive Search Log]: Making API call to ${url}`);
+
               const response = await fetch(url, { signal: controller.signal });
-              
+
               if (!response.ok) {
                   throw new Error(`API call failed with status: ${response.status}`);
               }
-              
-              // The new API returns JSON, not text.
+
+              // The new API returns clean JSON
               const jsonData = await response.json();
               console.log('[Predictive Search Log]: API response received:', jsonData);
-              
+
               const suggestions = parseYouTubeSuggestions(jsonData);
               console.log('[Predictive Search Log]: Parsed suggestions:', suggestions);
               setPredictiveSuggestions(suggestions);
+
           } catch (e: any) {
               if (e.name !== 'AbortError') {
                   console.error('[Predictive Search Log]: Failed to fetch or parse suggestions:', e);
@@ -643,7 +645,6 @@ const App: React.FC = () => {
       return () => clearTimeout(timeoutId);
 
     } else {
-        console.log(`[Predictive Search Log]: Search term is too short or empty. Reverting to history dropdown.`);
         setIsHistoryDropdown(true);
         setPredictiveSuggestions([]);
     }
