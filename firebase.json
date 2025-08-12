@@ -11,8 +11,8 @@
     ],
     "rewrites": [
       {
-        "source": "/suggest/**",
-        "function": "suggestV2" // <--- CHANGE THIS
+        "source": "/suggestV2/**",
+        "function": "suggestV2"
       },
       {
         "source": "**",
