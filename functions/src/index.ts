@@ -2,7 +2,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import axios from "axios";
 
-export const suggest = onRequest({ cors: true }, async (request, response) => {
+export const suggestV2 = onRequest({ cors: true }, async (request, response) => {
     logger.info("Suggest function triggered", { query: request.query });
 
     try {

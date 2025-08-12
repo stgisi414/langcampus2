@@ -610,6 +610,7 @@ const App: React.FC = () => {
     }
 
     if (searchTerm.length > 1) {
+      console.log(`[Predictive Search Log]: Search term changed to "${searchTerm}". Debouncing API call.`);
       setIsHistoryDropdown(false);
 
       const controller = new AbortController();
@@ -617,8 +618,8 @@ const App: React.FC = () => {
 
       const timeoutId = setTimeout(async () => {
           try {
-              // CORRECTED: We now pass the API key in the request to our function
-              const url = `/suggest?key=${API_KEY}&q=${encodeURIComponent(searchTerm)}`;
+              // THIS IS THE CORRECTED LINE: Only send the 'key' and 'q' parameters.
+              const url = `/suggestV2?key=${API_KEY}&q=${encodeURIComponent(searchTerm)}`;
               console.log(`[Predictive Search Log]: Making API call to ${url}`);
 
               const response = await fetch(url, { signal: controller.signal });
@@ -627,10 +628,10 @@ const App: React.FC = () => {
                   throw new Error(`API call failed with status: ${response.status}`);
               }
 
-              // The new API returns clean JSON
               const jsonData = await response.json();
               console.log('[Predictive Search Log]: API response received:', jsonData);
 
+              // This is the function you updated earlier. It is correct.
               const suggestions = parseYouTubeSuggestions(jsonData);
               console.log('[Predictive Search Log]: Parsed suggestions:', suggestions);
               setPredictiveSuggestions(suggestions);
@@ -645,6 +646,7 @@ const App: React.FC = () => {
       return () => clearTimeout(timeoutId);
 
     } else {
+        console.log(`[Predictive Search Log]: Search term is too short or empty. Reverting to history dropdown.`);
         setIsHistoryDropdown(true);
         setPredictiveSuggestions([]);
     }

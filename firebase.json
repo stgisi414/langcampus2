@@ -12,7 +12,7 @@
     "rewrites": [
       {
         "source": "/suggest/**",
-        "function": "suggest"
+        "function": "suggestV2" // <--- CHANGE THIS
       },
       {
         "source": "**",
