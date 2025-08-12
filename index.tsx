@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, Part, Type } from '@google/genai';
 import YouTube from 'react-youtube';
@@ -15,11 +15,28 @@ const styles = `
     gap: 2rem;
   }
 
+  .header-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+  }
+
   h1 {
     color: var(--primary-color);
     font-size: 2.5rem;
     margin-bottom: 0;
     font-weight: 700;
+  }
+
+  .help-button {
+    background: transparent;
+    border: none;
+    color: var(--primary-color);
+    font-size: 1.5rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0;
   }
 
   .language-selector-container {
@@ -45,6 +62,7 @@ const styles = `
     width: 100%;
     max-width: 500px;
     margin: 0 auto;
+    position: relative;
   }
 
   .search-input {
@@ -170,7 +188,7 @@ const styles = `
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s, visibility 0.3s;
-    overflow-y: auto; /* FIX: Added to allow scrolling for long questions */
+    overflow-y: auto;
   }
 
   .quiz-overlay.visible {
@@ -189,7 +207,7 @@ const styles = `
     font-size: 1.8rem;
     font-weight: 700;
     margin-bottom: 2rem;
-    word-wrap: break-word; /* FIX: Added to allow long words to wrap */
+    word-wrap: break-word;
   }
 
   .options-grid {
@@ -253,6 +271,101 @@ const styles = `
     gap: 1rem;
     margin-top: 1.5rem;
   }
+
+  /* NEW: Help Popup Styles */
+  .help-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+  }
+  
+  .help-popup-content {
+    background-color: var(--surface-color);
+    color: var(--text-primary);
+    padding: 2rem;
+    border-radius: 8px;
+    max-width: 500px;
+    width: 90%;
+    text-align: left;
+    position: relative;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  }
+  
+  .help-popup-content h3 {
+    text-align: center;
+    color: var(--primary-color);
+    margin-top: 0;
+  }
+  
+  .help-popup-content p {
+    margin-bottom: 1rem;
+  }
+  
+  .help-popup-close-button {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: transparent;
+    border: none;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  
+  /* NEW: Dropdown styles */
+  .search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background-color: var(--surface-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 8px;
+    margin-top: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    list-style-type: none;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .search-dropdown h4 {
+    margin: 0;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-align: left;
+    border-bottom: 1px solid var(--primary-color);
+  }
+  .search-dropdown-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.15s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .search-dropdown-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  .search-dropdown-clear {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    text-align: center;
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    border-top: 1px solid var(--primary-color);
+    margin-top: 0;
+  }
 `;
 
 // --- TYPES ---
@@ -291,6 +404,46 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return newArray;
 };
 
+// --- NEW: Local Storage Key ---
+const SEARCH_HISTORY_KEY = 'langcampus_search_history';
+
+// --- NEW: A simple, safe parser for the YouTube autocomplete API response ---
+const parseYouTubeSuggestions = (text: string): string[] => {
+  try {
+    const startIndex = text.indexOf('window.google.ac.h(') + 'window.google.ac.h('.length;
+    const endIndex = text.lastIndexOf(')');
+    const jsonString = text.substring(startIndex, endIndex);
+    const data = JSON.parse(jsonString);
+    if (data && Array.isArray(data[1])) {
+      return data[1].map((item: any) => item[0]);
+    }
+  } catch (e) {
+    console.error('Failed to parse YouTube suggestions:', e);
+  }
+  return [];
+};
+
+// NEW: Help Popup Component
+const HelpPopup: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+  <div className="help-popup-overlay">
+    <div className="help-popup-content">
+      <button className="help-popup-close-button" onClick={onClose}>×</button>
+      <h3>How to Get the Best Results</h3>
+      <p>
+        This quiz app uses the video's transcript to generate questions. For the best experience, we recommend choosing songs that are:
+      </p>
+      <ul>
+        <li>Official music videos or official lyric videos.</li>
+        <li>Videos that have built-in captions (subtitles).</li>
+        <li>Videos where the lyrics are displayed on screen, synchronized with the music.</li>
+      </ul>
+      <p>
+        Using these types of videos ensures the most accurate and high-quality quiz questions will be generated.
+      </p>
+    </div>
+  </div>
+);
+
 const App: React.FC = () => {
   // --- STATE ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -310,17 +463,36 @@ const App: React.FC = () => {
   const supportedLanguages = ['English', 'Spanish', 'French', 'German', 'Japanese', 'Korean'];
   const [showPlayerControls, setShowPlayerControls] = useState(false);
   const [showEndScreen, setShowEndScreen] = useState(false);
+  // NEW: State for help popup
+  const [showHelpPopup, setShowHelpPopup] = useState(false);
+  // NEW: State for search history, predictive suggestions, and dropdown visibility ---
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [predictiveSuggestions, setPredictiveSuggestions] = useState<string[]>([]);
+  const [isHistoryDropdown, setIsHistoryDropdown] = useState(true);
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
   const timeCheckIntervalRef = useRef<number | null>(null);
   const lastPlaybackTimeRef = useRef<number>(0);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const fetchSuggestionsAbortControllerRef = useRef<AbortController | null>(null);
 
   // --- LIFECYCLE ---
   useEffect(() => {
     const styleTag = document.createElement('style');
     styleTag.innerHTML = styles;
     document.head.appendChild(styleTag);
+    
+    // NEW: Load search history from local storage on mount
+    try {
+        const storedHistory = localStorage.getItem(SEARCH_HISTORY_KEY);
+        if (storedHistory) {
+            setSearchHistory(JSON.parse(storedHistory));
+        }
+    } catch (e) {
+        console.error("Could not load search history from local storage:", e);
+    }
   }, []);
   
   useEffect(() => {
@@ -340,19 +512,93 @@ const App: React.FC = () => {
     };
   }, [isQuizActive, currentQuestionIndex, quiz.length]);
 
+  // NEW: Robust logging added here
+  useEffect(() => {
+    // Clear previous requests
+    if (fetchSuggestionsAbortControllerRef.current) {
+        fetchSuggestionsAbortControllerRef.current.abort();
+    }
+    
+    if (searchTerm.length > 1) {
+      console.log(`[Predictive Search Log]: Search term changed to "${searchTerm}". Debouncing API call.`);
+      setIsHistoryDropdown(false);
+
+      const controller = new AbortController();
+      fetchSuggestionsAbortControllerRef.current = controller;
+      
+      const timeoutId = setTimeout(async () => {
+          try {
+              const url = `/suggest/complete/search?client=youtube&gs_ri=youtube&ds=yt&q=${encodeURIComponent(searchTerm)}`;
+              console.log(`[Predictive Search Log]: Making API call to ${url}`);
+              const response = await fetch(url, { signal: controller.signal });
+              
+              if (!response.ok) {
+                  throw new Error(`API call failed with status: ${response.status}`);
+              }
+              
+              const text = await response.text();
+              console.log('[Predictive Search Log]: API response received.');
+              console.log('[Predictive Search Log]: Raw response text:', text.substring(0, 100) + '...'); // Log a snippet of the raw text
+              
+              const suggestions = parseYouTubeSuggestions(text);
+              console.log('[Predictive Search Log]: Parsed suggestions:', suggestions);
+              setPredictiveSuggestions(suggestions);
+          } catch (e: any) {
+              if (e.name !== 'AbortError') {
+                  console.error('[Predictive Search Log]: Failed to fetch or parse suggestions:', e);
+              }
+          }
+      }, 300); // Debounce to prevent too many API calls
+
+      return () => clearTimeout(timeoutId);
+
+    } else {
+        console.log(`[Predictive Search Log]: Search term is too short or empty. Reverting to history dropdown.`);
+        setIsHistoryDropdown(true);
+        setPredictiveSuggestions([]);
+    }
+  }, [searchTerm]);
+
+  // NEW: Save search history to local storage whenever it changes
+  useEffect(() => {
+      try {
+          localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+      } catch (e) {
+          console.error("Could not save search history to local storage:", e);
+      }
+  }, [searchHistory]);
+
   // --- API & LOGIC ---
   const onPlayerReady = (event: { target: YouTubePlayer }) => {
     playerRef.current = event.target;
     setPlayerReady(true);
   };
+  
+  // NEW: Function to add a new search term to history
+  const addSearchToHistory = (term: string) => {
+    const trimmedTerm = term.trim();
+    if (trimmedTerm && !searchHistory.includes(trimmedTerm)) {
+      setSearchHistory(prevHistory => {
+        const newHistory = [trimmedTerm, ...prevHistory.filter(t => t !== trimmedTerm)];
+        // Limit history to the last 10 items
+        return newHistory.slice(0, 10);
+      });
+    }
+  };
 
-  const handleSearch = async () => {
-    if (!searchTerm) return;
+  const handleSearch = useCallback(async (term: string) => {
+    if (!term) return;
     setLoading(true);
     setError('');
     setSearchResults([]);
+    setShowDropdown(false);
+    
+    addSearchToHistory(term);
+    setSearchTerm(term);
+
     try {
-      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchTerm)} official music video&type=video&maxResults=6&key=${API_KEY}`);
+      console.log(`[Search Log]: Initiating video search for "${term}"`);
+      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(term)} official music video&type=video&maxResults=6&key=${API_KEY}`);
       
       if (!response.ok) {
         let errorMessage = `Failed to fetch videos from YouTube (Status: ${response.status}).`;
@@ -368,6 +614,7 @@ const App: React.FC = () => {
       }
 
       const data = await response.json();
+      console.log('[Search Log]: Video search API response received:', data.items);
       if (data.items && data.items.length > 0) {
         setSearchResults(data.items);
         setGameState('RESULTS');
@@ -376,12 +623,13 @@ const App: React.FC = () => {
         setGameState('SEARCH');
       }
     } catch (err: any) {
+      console.error('[Search Log]: An error occurred during the video search:', err);
       setError(err.message || 'An unknown error occurred during search.');
       setGameState('SEARCH'); 
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_KEY]);
 
   const handleSelectVideo = (video: YouTubeVideo) => {
     setPlayerReady(false); 
@@ -592,8 +840,13 @@ const App: React.FC = () => {
     setError('');
     lastPlaybackTimeRef.current = 0; // Reset the stored time
   };
-
-  // --- RENDER ---
+  
+  // NEW: Function to clear search history
+  const handleClearHistory = () => {
+    setSearchHistory([]);
+    setShowDropdown(false);
+  };
+  
   const renderQuizArea = () => {
     const playerOptions = {
         height: '100%',
@@ -719,8 +972,14 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDropdownItemClick = (term: string) => {
+    handleSearch(term);
+    setSearchTerm(term);
+  };
+  
   return (
     <div className="app-container">
+      {showHelpPopup && <HelpPopup onClose={() => setShowHelpPopup(false)} />}
       <header onClick={handleReset} style={{ cursor: 'pointer' }}>
         <h1 style={{ letterSpacing: '-0.09925em' }}><img src="/logo.png" style={{ height: '45px', width: '45px5px', background: 'rgba(256, 256, 256, 1)', borderRadius: '50%', padding: '3px', border: '2px solid #ff0000', verticalAlign: 'middle', marginRight: '5px'}} />Langcampus</h1>
       </header>
@@ -741,19 +1000,67 @@ const App: React.FC = () => {
       </div>
       
       {(gameState === 'SEARCH' || gameState === 'RESULTS') && (
-        <div className="search-container">
+        <div className="search-container" ref={searchContainerRef}>
           <input
               type="text"
               className="search-input"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search songs..."
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchTerm)}
               aria-label="Search for a song"
+              onFocus={() => setShowDropdown(true)}
+              onBlur={(e) => {
+                setTimeout(() => {
+                  if (!searchContainerRef.current?.contains(document.activeElement)) {
+                    setShowDropdown(false);
+                  }
+                }, 100);
+              }}
           />
-          <button className="search-button" onClick={handleSearch} disabled={loading}>
+          <button className="search-button" onClick={() => handleSearch(searchTerm)} disabled={loading}>
             {loading ? '...' : 'Search'}
           </button>
+          {showDropdown && (predictiveSuggestions.length > 0 || searchHistory.length > 0) && (
+            <ul className="search-dropdown">
+              {isHistoryDropdown ? (
+                <>
+                  <h4 style={{ color: 'var(--text-secondary)' }}>Recent Searches</h4>
+                  {searchHistory.map((historyItem, index) => (
+                    <li
+                      key={index}
+                      className="search-dropdown-item"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleDropdownItemClick(historyItem);
+                      }}
+                    >
+                      {historyItem}
+                    </li>
+                  ))}
+                  <li className="search-dropdown-clear" onClick={handleClearHistory}>
+                      Clear History
+                  </li>
+                </>
+              ) : (
+                <>
+                  <h4 style={{ color: 'var(--text-secondary)' }}>Suggestions</h4>
+                  {predictiveSuggestions.map((suggestion, index) => (
+                    <li
+                      key={index}
+                      className="search-dropdown-item"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleDropdownItemClick(suggestion);
+                      }}
+                    >
+                      {suggestion}
+                    </li>
+                  ))}
+                </>
+              )}
+            </ul>
+          )}
         </div>
       )}
       
