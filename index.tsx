@@ -869,7 +869,7 @@ const App: React.FC = () => {
         const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
         const videoDuration = videoContentDetails.duration;
 
-        const videoUrl = `https://www.youtube.com/watch?v=$${selectedVideo.id.videoId}`;
+        const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
         
         const schema = {
             type: Type.OBJECT,
@@ -953,7 +953,7 @@ const App: React.FC = () => {
   const handleFetchSummary = async () => {
     if (!selectedVideo) return;
     try {
-      const videoUrl = `https://www.youtube.com/watch?v=$${selectedVideo.id.videoId}`;
+      const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
       const textPart: Part = {
         text: `Please provide a concise summary of the following music video in ${language}.`,
       };
