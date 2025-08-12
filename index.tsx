@@ -13,6 +13,11 @@ const styles = `
     display: flex;
     flex-direction: column;
     gap: 2rem;
+    min-height: 100vh;
+  }
+
+  main {
+    flex-grow: 1;
   }
 
   .header-container {
@@ -28,7 +33,7 @@ const styles = `
     margin-bottom: 0;
     font-weight: 700;
   }
-
+  
   .help-button {
     background: transparent;
     border: none;
@@ -247,6 +252,21 @@ const styles = `
     cursor: not-allowed;
     opacity: 0.7;
   }
+  
+  .tts-button {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 1.2rem;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+    transition: color 0.2s;
+  }
+
+  .tts-button:hover {
+    color: var(--primary-color);
+  }
 
   .quiz-controls {
     position: absolute;
@@ -366,6 +386,25 @@ const styles = `
     border-top: 1px solid var(--primary-color);
     margin-top: 0;
   }
+  
+  /* NEW: Footer styles */
+  .app-footer {
+    width: 100%;
+    text-align: center;
+    padding: 1rem;
+    background-color: var(--surface-color);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .footer-logo {
+    height: 1.2em;
+    vertical-align: middle;
+  }
 `;
 
 // --- TYPES ---
@@ -423,6 +462,53 @@ const parseYouTubeSuggestions = (text: string): string[] => {
   return [];
 };
 
+// NEW: Helper function to decode base64 to ArrayBuffer
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+// NEW: Utility to wrap PCM audio data in a WAV container
+const pcmToWav = (pcmData: ArrayBuffer): Blob => {
+  const wavHeader = new ArrayBuffer(44);
+  const view = new DataView(wavHeader);
+
+  // RIFF identifier
+  view.setUint32(0, 0x52494646, false);
+  // file length
+  view.setUint32(4, pcmData.byteLength + 36, true);
+  // RIFF type
+  view.setUint32(8, 0x57415645, false);
+  // format chunk identifier
+  view.setUint32(12, 0x666d7420, false);
+  // format chunk length
+  view.setUint32(16, 16, true);
+  // sample format (1 = PCM)
+  view.setUint16(20, 1, true);
+  // channel count
+  view.setUint16(22, 1, true);
+  // sample rate
+  view.setUint32(24, 24000, true);
+  // byte rate (sample rate * block align)
+  view.setUint32(28, 24000 * 2, true);
+  // block align (channels * bytes per sample)
+  view.setUint16(32, 2, true);
+  // bits per sample
+  view.setUint16(34, 16, true);
+  // data chunk identifier
+  view.setUint32(36, 0x64617461, false);
+  // data chunk length
+  view.setUint32(40, pcmData.byteLength, true);
+
+  const wavBlob = new Blob([wavHeader, pcmData], { type: 'audio/wav' });
+  return wavBlob;
+};
+
 // NEW: Help Popup Component
 const HelpPopup: React.FC<{ onClose: () => void }> = ({ onClose }) => (
   <div className="help-popup-overlay">
@@ -444,6 +530,64 @@ const HelpPopup: React.FC<{ onClose: () => void }> = ({ onClose }) => (
   </div>
 );
 
+// NEW: Maps friendly language names to BCP-47 codes and prebuilt voices
+const languageCodeMap = {
+  'English': 'en-US',
+  'Spanish': 'es-US',
+  'French': 'fr-FR',
+  'German': 'de-DE',
+  'Japanese': 'ja-JP',
+  'Korean': 'ko-KR',
+  'Italian': 'it-IT',
+  'Portuguese': 'pt-BR',
+  'Russian': 'ru-RU',
+  'Arabic': 'ar-EG',
+  'Chinese': 'zh-CN',
+  'Hindi': 'hi-IN',
+  'Turkish': 'tr-TR',
+  'Polish': 'pl-PL',
+  'Dutch': 'nl-NL',
+  'Swedish': 'sv-SE',
+  'Finnish': 'fi-FI',
+};
+const voiceConfigMap = {
+    'en-US': { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+    'es-US': { prebuiltVoiceConfig: { voiceName: 'Puck' } },
+    'fr-FR': { prebuiltVoiceConfig: { voiceName: 'Leda' } },
+    'de-DE': { prebuiltVoiceConfig: { voiceName: 'Charon' } },
+    'ja-JP': { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
+    'ko-KR': { prebuiltVoiceConfig: { voiceName: 'Orus' } },
+    'it-IT': { prebuiltVoiceConfig: { voiceName: 'Fenrir' } },
+    'pt-BR': { prebuiltVoiceConfig: { voiceName: 'Umbriel' } },
+    'ru-RU': { prebuiltVoiceConfig: { voiceName: 'Iapetus' } },
+    'ar-EG': { prebuiltVoiceConfig: { voiceName: 'Algieba' } },
+    'zh-CN': { prebuiltVoiceConfig: { voiceName: 'Achernar' } },
+    'hi-IN': { prebuiltVoiceConfig: { voiceName: 'Alnilam' } },
+    'tr-TR': { prebuiltVoiceConfig: { voiceName: 'Gacrux' } },
+    'pl-PL': { prebuiltVoiceConfig: { voiceName: 'Pulcherrima' } },
+    'nl-NL': { prebuiltVoiceConfig: { voiceName: 'Achird' } },
+    'sv-SE': { prebuiltVoiceConfig: { voiceName: 'Zubenelgenubi' } },
+    'fi-FI': { prebuiltVoiceConfig: { voiceName: 'Vindemiatrix' } },
+};
+
+// NEW: Footer component
+const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
+  <footer className="app-footer">
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <span>(c) <span style={{ color: 'white' }} >Langcampus</span> powered by</span>
+      <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+        <img src="/gemini_logo.png" alt="Gemini" className="footer-logo" /> Gemini
+      </a>
+      <span>and</span>
+      <a href="youtu.be" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+        <img src="/youtube_logo.png" alt="YouTube" className="footer-logo" /> YouTube
+      </a>
+    </div>
+    <button className="help-button" onClick={onHelpClick}>?</button>
+  </footer>
+);
+
+
 const App: React.FC = () => {
   // --- STATE ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -460,16 +604,16 @@ const App: React.FC = () => {
   const [error, setError] = useState('');
   const [isPlayerReady, setPlayerReady] = useState(false);
   const [language, setLanguage] = useState('English');
-  const supportedLanguages = ['English', 'Spanish', 'French', 'German', 'Japanese', 'Korean'];
+  const supportedLanguages = Object.keys(languageCodeMap);
   const [showPlayerControls, setShowPlayerControls] = useState(false);
   const [showEndScreen, setShowEndScreen] = useState(false);
-  // NEW: State for help popup
   const [showHelpPopup, setShowHelpPopup] = useState(false);
-  // NEW: State for search history, predictive suggestions, and dropdown visibility ---
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [predictiveSuggestions, setPredictiveSuggestions] = useState<string[]>([]);
   const [isHistoryDropdown, setIsHistoryDropdown] = useState(true);
+  const [audioCache, setAudioCache] = useState<Record<string, HTMLAudioElement>>({});
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -484,7 +628,6 @@ const App: React.FC = () => {
     styleTag.innerHTML = styles;
     document.head.appendChild(styleTag);
     
-    // NEW: Load search history from local storage on mount
     try {
         const storedHistory = localStorage.getItem(SEARCH_HISTORY_KEY);
         if (storedHistory) {
@@ -496,15 +639,12 @@ const App: React.FC = () => {
   }, []);
   
   useEffect(() => {
-    // Clear any existing interval
     if (timeCheckIntervalRef.current) {
         clearInterval(timeCheckIntervalRef.current);
     }
-    // Set a new interval only if the quiz is active and we haven't answered all questions
     if (isQuizActive && currentQuestionIndex < quiz.length) {
         timeCheckIntervalRef.current = window.setInterval(checkPlayerTime, 500);
     }
-    // Cleanup function to clear the interval when the component unmounts or dependencies change
     return () => {
         if (timeCheckIntervalRef.current) {
             clearInterval(timeCheckIntervalRef.current);
@@ -512,9 +652,7 @@ const App: React.FC = () => {
     };
   }, [isQuizActive, currentQuestionIndex, quiz.length]);
 
-  // NEW: Robust logging added here
   useEffect(() => {
-    // Clear previous requests
     if (fetchSuggestionsAbortControllerRef.current) {
         fetchSuggestionsAbortControllerRef.current.abort();
     }
@@ -538,7 +676,7 @@ const App: React.FC = () => {
               
               const text = await response.text();
               console.log('[Predictive Search Log]: API response received.');
-              console.log('[Predictive Search Log]: Raw response text:', text.substring(0, 100) + '...'); // Log a snippet of the raw text
+              console.log('[Predictive Search Log]: Raw response text:', text.substring(0, 100) + '...');
               
               const suggestions = parseYouTubeSuggestions(text);
               console.log('[Predictive Search Log]: Parsed suggestions:', suggestions);
@@ -548,7 +686,7 @@ const App: React.FC = () => {
                   console.error('[Predictive Search Log]: Failed to fetch or parse suggestions:', e);
               }
           }
-      }, 300); // Debounce to prevent too many API calls
+      }, 300);
 
       return () => clearTimeout(timeoutId);
 
@@ -559,7 +697,6 @@ const App: React.FC = () => {
     }
   }, [searchTerm]);
 
-  // NEW: Save search history to local storage whenever it changes
   useEffect(() => {
       try {
           localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
@@ -574,13 +711,11 @@ const App: React.FC = () => {
     setPlayerReady(true);
   };
   
-  // NEW: Function to add a new search term to history
   const addSearchToHistory = (term: string) => {
     const trimmedTerm = term.trim();
     if (trimmedTerm && !searchHistory.includes(trimmedTerm)) {
       setSearchHistory(prevHistory => {
         const newHistory = [trimmedTerm, ...prevHistory.filter(t => t !== trimmedTerm)];
-        // Limit history to the last 10 items
         return newHistory.slice(0, 10);
       });
     }
@@ -642,29 +777,20 @@ const App: React.FC = () => {
     setLoading(true);
     setError('');
 
-    // Add your Supadata API Key here.
-    // You can get a free one from their website.
     const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY; 
 
     try {
-        // --- STEP 1: Fetch Transcript and Video Details in Parallel ---
-
         const [transcriptResponse, videoDetailsResponse] = await Promise.all([
-            // Fetch transcript from Supadata
             fetch(`https://api.supadata.ai/v1/youtube/transcript?videoId=${selectedVideo.id.videoId}`, {
                 headers: { 'x-api-key': SUPADATA_API_KEY }
             }),
-            // Fetch video details (like description and tags) from YouTube API
             fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${selectedVideo.id.videoId}&key=${API_KEY}`)
         ]);
-
-        // --- STEP 2: Process the API Responses ---
 
         if (!transcriptResponse.ok) {
             throw new Error('Failed to fetch transcript from Supadata. Check your API key and the video URL.');
         }
         const transcriptData = await transcriptResponse.json();
-        // Combine the transcript segments into a single string.
         const fullTranscript = transcriptData.content?.map((segment: { text: string; }) => segment.text).join(' ') || '';
 
         if (!videoDetailsResponse.ok) {
@@ -675,10 +801,7 @@ const App: React.FC = () => {
         const videoContentDetails = videoDetailsData.items?.[0]?.contentDetails || {};
         const videoDescription = videoSnippet.description || 'No description available.';
         const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
-        const videoDuration = videoContentDetails.duration; // ISO 8601 format
-
-
-        // --- STEP 3: Build the Enhanced Prompt for Gemini ---
+        const videoDuration = videoContentDetails.duration;
 
         const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
         
@@ -711,7 +834,6 @@ const App: React.FC = () => {
             }
         };
         
-        // This new text prompt includes the transcript and video details.
         const textPart: Part = {
             text: `Please create a fill-in-the-blank lyrics quiz for the provided music video.
             
@@ -730,8 +852,6 @@ const App: React.FC = () => {
             5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.
             6.  FIX: EXTREMELY IMPORTANT: Only use lyrics that are in the user's chosen language of ${language}. Do not create any questions or options from lyrics in other languages, even if they appear in the transcript. This is to ensure the quiz is relevant and in the correct language.`
         };
-
-        // --- STEP 4: Generate the Quiz with Gemini ---
 
         const response = await ai.models.generateContent({
             model: 'gemini-1.5-flash',
@@ -770,7 +890,7 @@ const App: React.FC = () => {
     }
 
     const currentTime = Number(await playerRef.current.getCurrentTime());
-    lastPlaybackTimeRef.current = currentTime; // Continuously update last known time
+    lastPlaybackTimeRef.current = currentTime;
     const currentQuestion = quiz[currentQuestionIndex];
 
     if (!currentQuestion) {
@@ -802,26 +922,20 @@ const App: React.FC = () => {
         } else {
           setIsQuizActive(false);
           setGameState('END');
-          setShowEndScreen(true); // <-- ADD THIS LINE
+          setShowEndScreen(true);
           playerRef.current?.pauseVideo();
         }
     }, 2000); 
   };
 
   const handleFinishListening = () => {
-    // Log the timestamp we are about to use. This is for debugging.
-    // You can check your browser's console (F12) to see what this value is.
     console.log(`Attempting to seek to: ${lastPlaybackTimeRef.current}`);
 
-    // These three lines completely exit the quiz UI state.
-    setShowEndScreen(false);     // Hides the "Quiz Complete!" screen.
-    setIsPausedForQuiz(false);  // Hides the final question overlay.
+    setShowEndScreen(false);
+    setIsPausedForQuiz(false);
     
-    // This ensures the player is ready before we command it.
     if (playerRef.current && isPlayerReady) {
-        // First, seek to the last recorded time.
         playerRef.current.seekTo(lastPlaybackTimeRef.current, true);
-        // Then, play the video.
         playerRef.current.playVideo();
     }
   };
@@ -838,22 +952,84 @@ const App: React.FC = () => {
     setScore(0);
     setGameState('SEARCH');
     setError('');
-    lastPlaybackTimeRef.current = 0; // Reset the stored time
+    lastPlaybackTimeRef.current = 0;
   };
   
-  // NEW: Function to clear search history
   const handleClearHistory = () => {
     setSearchHistory([]);
     setShowDropdown(false);
   };
   
+  const playAudio = async (text: string, lang: string) => {
+    if (isAudioPlaying) {
+      return;
+    }
+    const audioKey = `${text}-${lang}`;
+    if (audioCache[audioKey]) {
+      setIsAudioPlaying(true);
+      audioCache[audioKey].play();
+      audioCache[audioKey].onended = () => {
+        setIsAudioPlaying(false);
+      };
+      return;
+    }
+
+    try {
+      const languageCode = languageCodeMap[lang];
+      if (!languageCode) {
+        console.error('Unsupported language for TTS:', lang);
+        return;
+      }
+      const voiceConfig = voiceConfigMap[languageCode] || voiceConfigMap['en-US'];
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-preview-tts',
+        contents: [{ parts: [{ text: text }] }],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            ...voiceConfig,
+            languageCode: languageCode
+          },
+        },
+      });
+
+      console.log('[TTS Log]: Full API response:', response);
+
+      const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (data) {
+        const audioBuffer = base64ToArrayBuffer(data);
+        const audioBlob = pcmToWav(audioBuffer);
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        
+        audio.onended = () => {
+          setIsAudioPlaying(false);
+        };
+        
+        audio.play();
+        setIsAudioPlaying(true);
+        
+        setAudioCache(prevCache => ({
+          ...prevCache,
+          [audioKey]: audio
+        }));
+      } else {
+        console.error('No audio data received from TTS API.');
+      }
+    } catch (e) {
+      console.error('Failed to generate or play audio:', e);
+      setIsAudioPlaying(false);
+    }
+  };
+
   const renderQuizArea = () => {
     const playerOptions = {
         height: '100%',
         width: '100%',
         playerVars: {
           playsinline: 1,
-          controls: 1, // Always show controls
+          controls: 1,
           rel: 0,
           modestbranding: 1,
           origin: window.location.origin,
@@ -899,7 +1075,12 @@ const App: React.FC = () => {
                 <div className={`quiz-overlay visible`}>
                     <p>Question {currentQuestionIndex + 1} of {quiz.length}</p>
                     <p className="preceding-lyric">{currentQuestion.precedingLyric}</p>
-                    <h2 className="question-text">{currentQuestion.question}</h2>
+                    <h2 className="question-text">
+                      {currentQuestion.question}
+                      <button className="tts-button" onClick={() => playAudio(currentQuestion.question, language)} disabled={isAudioPlaying}>
+                        🔊
+                      </button>
+                    </h2>
                     <div className="options-grid">
                         {currentQuestion.options.map((option, index) => {
                             const isCorrect = option === currentQuestion.correctAnswer;
@@ -916,6 +1097,16 @@ const App: React.FC = () => {
                                     disabled={answered}
                                 >
                                     {option}
+                                    <button 
+                                      className="tts-button" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        playAudio(option, language);
+                                      }}
+                                      disabled={isAudioPlaying}
+                                    >
+                                      🔊
+                                    </button>
                                 </button>
                             );
                         })}
@@ -1067,6 +1258,7 @@ const App: React.FC = () => {
       <main>
         {renderContent()}
       </main>
+      <Footer onHelpClick={() => setShowHelpPopup(true)} />
     </div>
   );
 };

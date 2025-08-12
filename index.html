@@ -43,6 +43,38 @@
         padding: 2rem;
         overflow-y: auto;
       }
+      /* NEW: Styles for the footer */
+      .app-footer {
+        width: 100%;
+        text-align: center;
+        padding: 1rem;
+        background-color: var(--surface-color);
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        display: flex;
+        justify-content: space-between; /* This is the key change to push content to the edges */
+        align-items: center;
+      }
+      .footer-logo {
+        height: 1.2em; /* Adjust size as needed */
+        vertical-align: middle;
+      }
+      .app-footer a {
+        color: rgba(256, 256, 256, 1) !important;
+      }
+      .app-footer a:visited {
+        color: rgba(256, 256, 256, 1);
+      }
+      .help-button {
+        background: transparent;
+        border: none;
+        color: var(--primary-color);
+        font-size: 1.5rem;
+        font-weight: 700;
+        cursor: pointer;
+        padding: 0;
+        margin-left: auto; /* This also works to push it to the right */
+      }
     </style>
   <script type="importmap">
 {
@@ -58,7 +90,6 @@
 </head>
   <body>
     <div id="root"></div>
-    <!-- The YouTube IFrame API will be loaded by the script -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
