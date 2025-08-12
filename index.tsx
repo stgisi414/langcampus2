@@ -4,7 +4,7 @@ import { GoogleGenAI, Part, Type } from '@google/genai';
 import YouTube from 'react-youtube';
 import type { YouTubePlayer } from 'react-youtube';
 
-// --- STYLES (ASSUMED TO BE UNCHANGED) ---
+// --- STYLES (UPDATED) ---
 const styles = `
   .app-container {
     width: 100%;
@@ -170,6 +170,7 @@ const styles = `
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s, visibility 0.3s;
+    overflow-y: auto; /* FIX: Added to allow scrolling for long questions */
   }
 
   .quiz-overlay.visible {
@@ -188,6 +189,7 @@ const styles = `
     font-size: 1.8rem;
     font-weight: 700;
     margin-bottom: 2rem;
+    word-wrap: break-word; /* FIX: Added to allow long words to wrap */
   }
 
   .options-grid {
@@ -477,7 +479,8 @@ const App: React.FC = () => {
             2.  Generate as many high-quality questions as possible and distribute them evenly throughout the song.
             3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear. The final timestamp MUST be less than the video's total duration.
             4.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
-            5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.`
+            5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.
+            6.  FIX: EXTREMELY IMPORTANT: Only use lyrics that are in the user's chosen language of ${language}. Do not create any questions or options from lyrics in other languages, even if they appear in the transcript. This is to ensure the quiz is relevant and in the correct language.`
         };
 
         // --- STEP 4: Generate the Quiz with Gemini ---
