@@ -1,6 +1,6 @@
 import * as functions from "firebase-functions";
 import axios from "axios";
-import cors from "cors"; // Corrected import
+import cors from "cors";
 
 // Initialize a CORS handler to allow requests from your web app
 const corsHandler = cors({origin: true});
@@ -12,9 +12,9 @@ export const suggest = functions.https.onRequest((request, response) => {
     try {
       // The original URL your Vite proxy was calling
       const externalApiUrl = "https://clients1.google.com/complete/search";
-      
-      // Pass along the query parameters from the original request
-      const fullUrl = externalApiUrl + request.url;
+
+      // CORRECTED: Pass along only the query parameters from the original request
+      const fullUrl = externalApiUrl + request.search;
 
       const apiResponse = await axios.get(fullUrl, {
           // It's good practice to forward the user-agent header
