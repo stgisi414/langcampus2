@@ -567,6 +567,7 @@ const App: React.FC = () => {
   const [isHistoryDropdown, setIsHistoryDropdown] = useState(true);
   const [audioCache, setAudioCache] = useState<Record<string, HTMLAudioElement>>({});
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [summary, setSummary] = useState('');
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -868,7 +869,7 @@ const App: React.FC = () => {
         const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
         const videoDuration = videoContentDetails.duration;
 
-        const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
+        const videoUrl = `https://www.youtube.com/watch?v=$${selectedVideo.id.videoId}`;
         
         const schema = {
             type: Type.OBJECT,
@@ -912,7 +913,7 @@ const App: React.FC = () => {
             IMPORTANT INSTRUCTIONS:
             1.  Base the quiz questions *directly* on the provided transcript.
             2.  Generate as many high-quality questions as possible and distribute them evenly throughout the song.
-            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear. The final timestamp MUST be less than the video's total duration.
+            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear. The timestamp for the final question MUST be at least 15 seconds before the video's total duration to ensure it is asked before the song finishes.
             4.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
             5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.
             6.  FIX: EXTREMELY IMPORTANT: Only use lyrics that are in the user's chosen language of ${language}. Do not create any questions or options from lyrics in other languages, even if they appear in the transcript. This is to ensure the quiz is relevant and in the correct language.`
@@ -946,6 +947,30 @@ const App: React.FC = () => {
         setIsQuizActive(false);
     } finally {
         setLoading(false);
+    }
+  };
+
+  const handleFetchSummary = async () => {
+    if (!selectedVideo) return;
+    try {
+      const videoUrl = `https://www.youtube.com/watch?v=$${selectedVideo.id.videoId}`;
+      const textPart: Part = {
+        text: `Please provide a concise summary of the following music video in ${language}.`,
+      };
+      const videoPart: Part = {
+        fileData: {
+          mimeType: 'video/youtube',
+          fileUri: videoUrl
+        }
+      };
+      const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents: [{ parts: [videoPart, textPart] }],
+      });
+      setSummary(response.text);
+    } catch (err) {
+      console.error("Failed to fetch summary", err);
+      setSummary('Could not generate a summary for this video.');
     }
   };
 
@@ -988,6 +1013,7 @@ const App: React.FC = () => {
           setIsQuizActive(false);
           setGameState('END');
           setShowEndScreen(true);
+          handleFetchSummary();
           playerRef.current?.pauseVideo();
         }
     }, 2000); 
@@ -1017,6 +1043,7 @@ const App: React.FC = () => {
     setScore(0);
     setGameState('SEARCH');
     setError('');
+    setSummary('');
     lastPlaybackTimeRef.current = 0;
   };
   
@@ -1121,6 +1148,7 @@ const App: React.FC = () => {
                     <div className="final-score">
                         <h2>Quiz Complete!</h2>
                         <p style={{fontSize: '1.5rem'}}>Your final score is: {score} / {quiz.length}</p>
+                        {summary && <p style={{textAlign: 'left', marginTop: '2rem'}}>{summary}</p>}
                         <div className="button-container">
                             <button className="action-button" onClick={handleReset}>Play Another Song</button>
                             <button className="action-button finish-listening-button" onClick={handleFinishListening}>Finish Listening</button>
