@@ -568,6 +568,7 @@ const App: React.FC = () => {
   const [audioCache, setAudioCache] = useState<Record<string, HTMLAudioElement>>({});
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [summary, setSummary] = useState('');
+  const [isSummaryLoading, setSummaryLoading] = useState(false);
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -742,28 +743,32 @@ const App: React.FC = () => {
 
       console.log('[TTS Log]: Full API response:', response);
 
-      const audioPart = response.candidates[0].content.parts.find(part => part.inlineData && part.inlineData.mimeType.startsWith('audio/'));
+      if (response.candidates && response.candidates.length > 0 && response.candidates[0].content && response.candidates[0].content.parts) {
+        const audioPart = response.candidates[0].content.parts.find(part => part.inlineData && part.inlineData.mimeType.startsWith('audio/'));
 
-      if (audioPart && audioPart.inlineData) {
-        const data = audioPart.inlineData.data;
-        const audioBuffer = base64ToArrayBuffer(data);
-        const audioBlob = pcmToWav(audioBuffer);
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
+        if (audioPart && audioPart.inlineData) {
+          const data = audioPart.inlineData.data;
+          const audioBuffer = base64ToArrayBuffer(data);
+          const audioBlob = pcmToWav(audioBuffer);
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
 
-        audio.onended = () => {
-          setIsAudioPlaying(false);
-        };
+          audio.onended = () => {
+            setIsAudioPlaying(false);
+          };
 
-        audio.play();
-        setIsAudioPlaying(true);
+          audio.play();
+          setIsAudioPlaying(true);
 
-        setAudioCache(prevCache => ({
-          ...prevCache,
-          [audioKey]: audio
-        }));
+          setAudioCache(prevCache => ({
+            ...prevCache,
+            [audioKey]: audio
+          }));
+        } else {
+          console.error('No audio data received from TTS API.');
+        }
       } else {
-        console.error('No audio data received from TTS API.');
+         console.error('Invalid TTS API response structure:', response);
       }
     } catch (e) {
       console.error('Failed to generate or play audio:', e);
@@ -952,6 +957,7 @@ const App: React.FC = () => {
 
   const handleFetchSummary = async () => {
     if (!selectedVideo) return;
+    setSummaryLoading(true);
     try {
       const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
       const textPart: Part = {
@@ -971,6 +977,8 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Failed to fetch summary", err);
       setSummary('Could not generate a summary for this video.');
+    } finally {
+      setSummaryLoading(false);
     }
   };
 
@@ -1044,6 +1052,7 @@ const App: React.FC = () => {
     setGameState('SEARCH');
     setError('');
     setSummary('');
+    setSummaryLoading(false);
     lastPlaybackTimeRef.current = 0;
   };
   
@@ -1148,7 +1157,13 @@ const App: React.FC = () => {
                     <div className="final-score">
                         <h2>Quiz Complete!</h2>
                         <p style={{fontSize: '1.5rem'}}>Your final score is: {score} / {quiz.length}</p>
-                        {summary && <p style={{textAlign: 'left', marginTop: '2rem'}}>{summary}</p>}
+                        
+                        {isSummaryLoading ? (
+                          <p>Generating summary...</p>
+                        ) : (
+                          summary && <p style={{textAlign: 'left', marginTop: '2rem', whiteSpace: 'pre-wrap'}}>{summary}</p>
+                        )}
+                        
                         <div className="button-container">
                             <button className="action-button" onClick={handleReset}>Play Another Song</button>
                             <button className="action-button finish-listening-button" onClick={handleFinishListening}>Finish Listening</button>
