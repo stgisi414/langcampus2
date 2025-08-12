@@ -447,14 +447,11 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 const SEARCH_HISTORY_KEY = 'langcampus_search_history';
 
 // --- NEW: A simple, safe parser for the YouTube autocomplete API response ---
-const parseYouTubeSuggestions = (text: string): string[] => {
+const parseYouTubeSuggestions = (data: any): string[] => {
   try {
-    const startIndex = text.indexOf('window.google.ac.h(') + 'window.google.ac.h('.length;
-    const endIndex = text.lastIndexOf(')');
-    const jsonString = text.substring(startIndex, endIndex);
-    const data = JSON.parse(jsonString);
-    if (data && Array.isArray(data[1])) {
-      return data[1].map((item: any) => item[0]);
+    if (data && Array.isArray(data.items)) {
+      // The official API returns a list of video objects. We just want the titles.
+      return data.items.map((item: any) => item.snippet.title);
     }
   } catch (e) {
     console.error('Failed to parse YouTube suggestions:', e);
@@ -621,7 +618,7 @@ const App: React.FC = () => {
       
       const timeoutId = setTimeout(async () => {
           try {
-              const url = `/suggest/complete/search?client=youtube&gs_ri=youtube&ds=yt&q=${encodeURIComponent(searchTerm)}`;
+              const url = `/suggest?key=${API_KEY}&q=${encodeURIComponent(searchTerm)}`;
               console.log(`[Predictive Search Log]: Making API call to ${url}`);
               const response = await fetch(url, { signal: controller.signal });
               
@@ -629,11 +626,11 @@ const App: React.FC = () => {
                   throw new Error(`API call failed with status: ${response.status}`);
               }
               
-              const text = await response.text();
-              console.log('[Predictive Search Log]: API response received.');
-              console.log('[Predictive Search Log]: Raw response text:', text.substring(0, 100) + '...');
+              // The new API returns JSON, not text.
+              const jsonData = await response.json();
+              console.log('[Predictive Search Log]: API response received:', jsonData);
               
-              const suggestions = parseYouTubeSuggestions(text);
+              const suggestions = parseYouTubeSuggestions(jsonData);
               console.log('[Predictive Search Log]: Parsed suggestions:', suggestions);
               setPredictiveSuggestions(suggestions);
           } catch (e: any) {

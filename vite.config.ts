@@ -14,14 +14,15 @@ export default defineConfig(({ mode }) => {
                 '@': path.resolve(__dirname, '.'),
             }
         },
-        // NEW: Add the server block with the proxy configuration
+        build: {
+          minify: false
+        },
+        preview: {
+            port: 8080,
+            host: true,
+        },
         server: {
             port: 8080,
-            allowedHosts: [
-                //'.ngrok-free.app', // Use a wildcard to allow all ngrok subdomains
-                'localhost',
-                '127.0.0.1'
-            ],
             proxy: {
                 '/suggest': {
                     target: 'https://clients1.google.com',
