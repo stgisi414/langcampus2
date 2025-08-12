@@ -1,6 +1,6 @@
 import * as functions from "firebase-functions";
 import axios from "axios";
-import * as cors from "cors";
+import cors from "cors"; // Corrected import
 
 // Initialize a CORS handler to allow requests from your web app
 const corsHandler = cors({origin: true});
