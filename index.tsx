@@ -674,7 +674,11 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isPlayerReady, setPlayerReady] = useState(false);
-  const [language, setLanguage] = useState('English');
+  const getInitialLanguage = (): string => {
+  const savedLanguage = localStorage.getItem('selectedLanguage');
+    return savedLanguage || 'English';
+  };
+  const [language, setLanguage] = useState(getInitialLanguage);
   const supportedLanguages = Object.keys(languageCodeMap);
   const [showPlayerControls, setShowPlayerControls] = useState(false);
   const [showEndScreen, setShowEndScreen] = useState(false);
@@ -696,6 +700,10 @@ const App: React.FC = () => {
   const fetchSuggestionsAbortControllerRef = useRef<AbortController | null>(null);
 
   // --- LIFECYCLE ---
+  useEffect(() => {
+    localStorage.setItem('selectedLanguage', language);
+  }, [language]);
+
   useEffect(() => {
     const styleTag = document.createElement('style');
     styleTag.innerHTML = styles;
