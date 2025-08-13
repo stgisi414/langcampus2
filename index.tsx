@@ -95,6 +95,10 @@ const styles = `
   .search-button:hover, .action-button:hover {
     background-color: #cc0000;
   }
+  .search-button-icon {
+    display: none; /* Hidden by default on large screens */
+    font-size: 1.2rem; /* Makes the magnifying glass a nice size */
+  }
 
   .finish-listening-button {
     background-color: #333333;
@@ -405,6 +409,36 @@ const styles = `
     height: 1.2em;
     vertical-align: middle;
   }
+  
+  @media (max-width: 600px) {
+    .app-footer {
+      flex-direction: column; /* Stack footer items vertically */
+      gap: 0.75rem;           /* Add some space between the stacked items */
+      align-items: center;    /* Center-align the items */
+    }
+
+    .help-button {
+      margin-left: 0; /* Reset the margin for the new layout */
+    }
+
+    /* Styles for the search button on mobile */
+    .search-button {
+      padding: 0.75rem;     /* Make the button circular */
+      width: 44px;          /* Set a fixed width */
+      height: 44px;         /* Set a fixed height */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .search-button-text {
+      display: none; /* Hide the word "Search" on mobile */
+    }
+
+    .search-button-icon {
+      display: inline; /* Show the magnifying glass icon on mobile */
+    }
+  }
 `;
 
 // --- TYPES ---
@@ -529,7 +563,7 @@ const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
         <img src="/gemini_logo.png" alt="Gemini" className="footer-logo" /> Gemini
       </a>
       <span>and</span>
-      <a href="youtu.be" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+      <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
         <img src="/youtube_logo.png" alt="YouTube" className="footer-logo" /> YouTube
       </a>
     </div>
@@ -1254,8 +1288,13 @@ const App: React.FC = () => {
                 }, 100);
               }}
           />
-          <button className="search-button" onClick={() => handleSearch(searchTerm)} disabled={loading}>
-            {loading ? '...' : 'Search'}
+          <button className="search-button" onClick={() => handleSearch(searchTerm)} disabled={loading} aria-label="Search">
+            {loading ? '...' : (
+              <>
+                <span className="search-button-text">Search</span>
+                <span className="search-button-icon">🔍</span>
+              </>
+            )}
           </button>
           {showDropdown && (predictiveSuggestions.length > 0 || searchHistory.length > 0) && (
             <ul className="search-dropdown">
