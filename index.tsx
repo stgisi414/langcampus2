@@ -411,6 +411,10 @@ const styles = `
   }
 
   .landing-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3rem; /* Adds space between the image and the text column */
     margin-top: 3rem;
     margin-bottom: 2rem;
     padding: 0 1rem;
@@ -418,32 +422,85 @@ const styles = `
   }
 
   .landing-image {
-    max-width: 100%;
-    width: 500px; /* Adjust as needed */
+    max-width: 45%; /* Control the size of the image */
     height: auto;
     border-radius: 12px;
-    margin-bottom: 2rem;
     box-shadow: 0 8px 30px rgba(0,0,0,0.4);
   }
 
+  .landing-content {
+    flex: 1; /* Allows the text column to take up the remaining space */
+    text-align: left; /* Aligns text to the left for desktop */
+  }
+
   .landing-title {
-    font-size: 2.2rem;
+    font-size: 2.5rem; /* Slightly larger for desktop */
     font-weight: 700;
     color: var(--text-primary);
     margin-bottom: 1rem;
   }
 
   .landing-text {
-    font-size: 1.1rem;
+    font-size: 1.2rem; /* Slightly larger for desktop */
     color: var(--text-secondary);
     max-width: 600px;
-    margin: 0 auto;
     line-height: 1.6;
   }
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+
+  .popular-songs-container {
+    width: 100%;
+    margin-top: 3rem;
+    border-top: 1px solid var(--surface-color);
+    padding-top: 2rem;
+  }
+
+  .popular-songs-title {
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+  }
+
+  .popular-songs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .popular-song-card {
+    /* You can add specific overrides for the popular song cards if needed */
+    /* For example, a slightly different hover effect */
+  }
+
+  @media (max-width: 768px) {
+    .landing-container {
+      flex-direction: column; /* Stacks image and text vertically */
+      gap: 2rem;
+    }
+
+    .landing-image {
+      max-width: 100%;
+      width: 500px; 
+      order: 2; /* This moves the image to be second */
+    }
+
+    .landing-content {
+      order: 1; /* This moves the text content to be first */
+      text-align: center; /* Center the text on mobile */
+    }
+
+    .landing-title {
+      font-size: 2.2rem; /* Adjust font size for mobile */
+    }
+
+    .landing-text {
+      font-size: 1.1rem; /* Adjust font size for mobile */
+    }
   }
   
   @media (max-width: 600px) {
@@ -648,15 +705,56 @@ const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
   </footer>
 );
 
-const LandingComponent: React.FC = () => (
-  <div className="landing-container">
-    <h2 className="landing-title">Learn Languages Through Music</h2>
-    <br />
-    <img src="/landing-image.png" alt="Learn languages with music quizzes" className="landing-image" />
-    <p className="landing-text">
-      Search for any song, take a fill-in-the-blank + multiple choice lyrics quiz, and master new vocabulary while you listen.
-    </p>
-  </div>
+const PopularSongs: React.FC<{
+  songs: YouTubeVideo[];
+  isLoading: boolean;
+  onSelectSong: (video: YouTubeVideo) => void;
+}> = ({ songs, isLoading, onSelectSong }) => {
+  if (isLoading) {
+    return <div className="loader"></div>;
+  }
+
+  if (songs.length === 0) {
+    return null; // Don't render anything if there are no songs
+  }
+
+  return (
+    <div className="popular-songs-container">
+      <h3 className="popular-songs-title">Popular Songs</h3>
+      <div className="popular-songs-grid">
+        {songs.map((song) => (
+          <div key={song.id.videoId} className="video-card popular-song-card" onClick={() => onSelectSong(song)}>
+            <img src={song.snippet.thumbnails.high.url} alt={song.snippet.title} />
+            <p className="video-card-title">{song.snippet.title}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const LandingComponent: React.FC<{
+  popularSongs: YouTubeVideo[];
+  popularSongsLoading: boolean;
+  handleSelectVideo: (video: YouTubeVideo) => void;
+}> = ({ popularSongs, popularSongsLoading, handleSelectVideo }) => (
+  <>
+    <div className="landing-container">
+      {/* ... (keep your existing landing-image and landing-content divs here) ... */}
+      <img src="/landing-image.png" alt="Learn languages with music quizzes" className="landing-image" />
+      <div className="landing-content">
+        <h2 className="landing-title">Learn Languages Through Music</h2>
+        <p className="landing-text">
+          Search for any song, take a fill-in-the-blank + multiple choice lyrics quiz, and master new vocabulary while you listen.
+        </p>
+      </div>
+    </div>
+    <PopularSongs 
+      songs={popularSongs} 
+      isLoading={popularSongsLoading} 
+      onSelectSong={handleSelectVideo} 
+    />
+  </>
 );
 
 const App: React.FC = () => {
@@ -691,6 +789,8 @@ const App: React.FC = () => {
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [summary, setSummary] = useState('');
   const [isSummaryLoading, setSummaryLoading] = useState(false);
+  const [popularSongs, setPopularSongs] = useState<YouTubeVideo[]>([]);
+  const [popularSongsLoading, setPopularSongsLoading] = useState(true);
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -702,6 +802,32 @@ const App: React.FC = () => {
   // --- LIFECYCLE ---
   useEffect(() => {
     localStorage.setItem('selectedLanguage', language);
+  }, [language]);
+
+  useEffect(() => {
+    const fetchPopularSongs = async () => {
+      if (!language) return; // Don't fetch if language isn't set
+      setPopularSongsLoading(true);
+      try {
+        // Use YouTube's 'mostPopular' chart for music, filtered by language
+        const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=Top music videos ${language}&type=video&chart=mostPopular&videoCategoryId=10&maxResults=8&key=${API_KEY}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch popular songs from YouTube');
+        }
+        const data = await response.json();
+        if (data.items) {
+          setPopularSongs(data.items);
+        }
+      } catch (error) {
+        console.error("Could not fetch popular songs:", error);
+        // Silently fail or set an error state if you prefer
+        setPopularSongs([]); 
+      } finally {
+        setPopularSongsLoading(false);
+      }
+    };
+
+    fetchPopularSongs();
   }, [language]);
 
   useEffect(() => {
@@ -1454,7 +1580,11 @@ const App: React.FC = () => {
       
       <main>
         {gameState === 'SEARCH' && !loading && !error && searchResults.length === 0 && (
-          <LandingComponent />
+          <LandingComponent 
+            popularSongs={popularSongs} 
+            popularSongsLoading={popularSongsLoading} 
+            handleSelectVideo={handleSelectVideo} 
+          />
         )}
 
         {renderContent()}
