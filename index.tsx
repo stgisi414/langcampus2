@@ -502,12 +502,56 @@ const styles = `
       font-size: 1.1rem; /* Adjust font size for mobile */
     }
   }
+
+  .app-logo {
+    /* Slower and smoother animation */
+    animation: logo-animation 3.5s ease-in-out;
+    display: inline-block;
+  }
+
+  @keyframes logo-animation {
+    0% {
+      transform: scale(1);
+      opacity: 1;
+      margin-right: 5px;
+    }
+    20% {
+      /* Reduced scale */
+      transform: scale(2.0);
+      /* Increased margin */
+      margin-right: 40px; 
+    }
+    35%, 65% {
+      /* Reduced pulse scale */
+      transform: scale(2.2);
+      margin-right: 45px;
+    }
+    50% {
+      transform: scale(1.9);
+      margin-right: 38px;
+    }
+    85% {
+      transform: scale(1);
+      opacity: 1;
+      margin-right: 5px;
+    }
+    92% {
+      opacity: 0.2;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+      margin-right: 5px;
+    }
+  }
   
   @media (max-width: 600px) {
     .app-footer {
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem; /* Increased gap for better spacing */
+      /* Keep the footer content in a single row */
+      flex-direction: row; 
+      /* Vertically center the items in the row */
+      align-items: center; 
+      gap: 1rem;
     }
 
     /* New styles for the redesigned footer content */
@@ -577,6 +621,17 @@ if (!API_KEY) {
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 // --- UTILITY FUNCTIONS ---
+const parseISO8601Duration = (duration: string): number => {
+  const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+  if (!match) return 0;
+
+  const hours = (parseInt(match[1]) || 0);
+  const minutes = (parseInt(match[2]) || 0);
+  const seconds = (parseInt(match[3]) || 0);
+
+  return hours * 3600 + minutes * 60 + seconds;
+};
+
 const shuffleArray = <T,>(array: T[]): T[] => {
   const newArray = [...array];
   for (let i = newArray.length - 1; i > 0; i--) {
@@ -618,6 +673,9 @@ const HelpPopup: React.FC<{ onClose: () => void }> = ({ onClose }) => (
       </ul>
       <p>
         Using these types of videos ensures the most accurate and high-quality quiz questions will be generated.
+      </p>
+      <p>
+        For mobile users, you will not be able to answer quiz questions without turning your phone sideways and accessing the website in landscape mode.
       </p>
     </div>
   </div>
@@ -1076,10 +1134,40 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleSelectVideo = (video: YouTubeVideo) => {
-    setPlayerReady(false); 
-    setSelectedVideo(video);
-    setGameState('QUIZ');
+  const handleSelectVideo = async (video: YouTubeVideo) => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`/getVideoDetails?videoId=${video.id.videoId}`);
+      if (!response.ok) {
+        throw new Error('Could not verify video length.');
+      }
+      const data = await response.json();
+      const durationString = data.items?.[0]?.contentDetails?.duration;
+
+      if (!durationString) {
+        throw new Error('Could not retrieve video duration.');
+      }
+
+      const durationInSeconds = parseISO8601Duration(durationString);
+      const FIFTEEN_MINUTES = 900;
+
+      if (durationInSeconds > FIFTEEN_MINUTES) {
+        setError('Please select a video that is 15 minutes or shorter.');
+        setLoading(false);
+        return; // Stop the function here
+      }
+
+      // If duration is okay, proceed as normal
+      setPlayerReady(false);
+      setSelectedVideo(video);
+      setGameState('QUIZ');
+
+    } catch (err: any) {
+      setError(err.message || 'An error occurred selecting the video.');
+    } finally {
+      setLoading(false);
+    }
   };
   
   const handleStartQuiz = async () => {
@@ -1378,7 +1466,9 @@ const App: React.FC = () => {
     <div className="app-container">
       {showHelpPopup && <HelpPopup onClose={() => setShowHelpPopup(false)} />}
       <header onClick={handleReset} style={{ cursor: 'pointer' }}>
-        <h1 style={{ letterSpacing: '-0.09925em' }}><img src="/logo.png" style={{ height: '45px', width: '45px5px', background: 'rgba(256, 256, 256, 1)', borderRadius: '50%', padding: '3px', border: '2px solid #ff0000', verticalAlign: 'middle', marginRight: '5px'}} />Langcampus</h1>
+        <h1 style={{ letterSpacing: '-0.09925em' }}>
+          <img className="app-logo" src="/logo.png" style={{ height: '45px', width: '45px', background: 'rgba(256, 256, 256, 1)', borderRadius: '50%', padding: '3px', border: '2px solid #ff0000', verticalAlign: 'middle'}} />
+Langcampus</h1>
       </header>
 
       <div className="language-selector-container">

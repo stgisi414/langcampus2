@@ -12,6 +12,7 @@
     "rewrites": [
       { "source": "/searchVideos", "function": "searchVideos" },
       { "source": "/generateQuiz", "function": "generateQuiz" },
+      { "source": "/getVideoDetails", "function": "getVideoDetails" },
       {
         "source": "/getPopularVideos", // New rule
         "function": "getPopularVideos"

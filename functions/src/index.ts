@@ -14,7 +14,6 @@ const secrets = ["YOUTUBE_KEY", "SUPADATA_KEY"];
 
 // --- suggestV3 FUNCTION ---
 export const suggestV3 = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    // FIX: Use process.env to access secrets
     const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     logger.info("Suggest function triggered", { query: request.query });
     try {
@@ -38,7 +37,6 @@ export const suggestV3 = onRequest({ cors: true, invoker: 'public', secrets }, a
 
 // --- getPopularVideos CACHING FUNCTION ---
 export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    // FIX: Use process.env to access secrets
     const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const { language } = request.query;
 
@@ -47,28 +45,29 @@ export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secre
         return;
     }
 
-    // NEW: Map of languages to their word for "lyrics"
-    const lyricsTranslationMap: Record<string, string> = {
-        'English': 'lyrics',
-        'Spanish': 'letra',
-        'French': 'paroles',
-        'German': 'songtext',
-        'Japanese': '歌詞 Kanji',
-        'Korean': '가사',
-        'Italian': 'testo',
-        'Portuguese': 'letra',
-        'Russian': 'текст песни',
-        'Arabic': 'كلمات',
-        'Chinese': '歌词',
-        'Hindi': 'गीत',
-        'Turkish': 'şarkı sözleri',
-        'Polish': 'tekst piosenki',
-        'Dutch': 'songtekst',
-        'Swedish': 'låttext',
-        'Finnish': 'sanat'
+    // NEW: A more accurate map of full search queries for each language
+    const searchQueryMap: Record<string, string> = {
+        'English': 'top music videos with lyrics',
+        'Spanish': 'mejores videos musicales con letra',
+        'French': 'meilleurs clips vidéo avec paroles',
+        'German': 'Top-Musikvideos mit Songtexten',
+        'Japanese': '人気曲 歌詞 邦楽', // "Popular songs lyrics Japanese music" - strongly favors Kanji
+        'Korean': '인기 뮤직 비디오 가사',
+        'Italian': 'migliori video musicali con testo',
+        'Portuguese': 'melhores videoclipes com letra',
+        'Russian': 'популярные музыкальные клипы с текстом песни',
+        'Arabic': 'أفضل فيديوهات موسيقية مع الكلمات',
+        'Chinese': '热门音乐视频带歌词',
+        'Hindi': 'लिरिक्स के साथ टॉप म्यूजिक वीडियो',
+        'Turkish': 'şarkı sözleri ile en iyi müzik videoları',
+        'Polish': 'najlepsze teledyski z tekstem',
+        'Dutch': 'top muziekvideo\'s met songtekst',
+        'Swedish': 'bästa musikvideor med låttext',
+        'Finnish': 'suosituimmat musiikkivideot sanoilla'
     };
 
-    const lyricWord = lyricsTranslationMap[language] || 'lyrics';
+    // Use the specific query for the selected language, or a default
+    const searchQuery = searchQueryMap[language] || `top music videos ${language} lyrics`;
 
     const cacheDocRef = db.collection('popularVideosCache').doc(language);
     const CACHE_DURATION_HOURS = 4;
@@ -90,13 +89,12 @@ export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secre
             }
         }
 
-        logger.info(`Fetching fresh data for language: ${language}`);
+        logger.info(`Fetching fresh data for language: ${language} with query: "${searchQuery}"`);
         const officialApiUrl = "https://www.googleapis.com/youtube/v3/search";
         const apiResponse = await axios.get(officialApiUrl, {
             params: {
                 part: 'snippet',
-                // Use the translated word for "lyrics" in the query
-                q: `Top music videos ${language} ${lyricWord}`,
+                q: searchQuery, // Use the new, fully translated search query
                 type: 'video',
                 chart: 'mostPopular',
                 videoCategoryId: '10',
@@ -123,7 +121,6 @@ export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secre
 
 // --- searchVideos FUNCTION ---
 export const searchVideos = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    // FIX: Use process.env to access secrets
     const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const { q } = request.query;
     if (typeof q !== 'string') {
@@ -150,11 +147,9 @@ export const searchVideos = onRequest({ cors: true, invoker: 'public', secrets }
 
 // --- generateQuiz FUNCTION ---
 export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    // FIX: Use process.env to access secrets
     const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const SUPADATA_API_KEY = process.env.SUPADATA_KEY;
     
-    // Ensure the keys are not undefined
     if (!YOUTUBE_API_KEY || !SUPADATA_API_KEY) {
         logger.error("API keys are not set in the environment.");
         response.status(500).send("Server configuration error.");
@@ -264,5 +259,29 @@ export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }
         logger.error(`Error generating quiz for videoId "${videoId}":`, error);
         if (error.response) logger.error("Axios Sub-Error:", error.response.data);
         response.status(500).send("Failed to generate quiz.");
+    }
+});
+
+// --- getVideoDetails FUNCTION ---
+export const getVideoDetails = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
+    const { videoId } = request.query;
+    if (typeof videoId !== 'string') {
+        response.status(400).send("Missing 'videoId' query parameter.");
+        return;
+    }
+    try {
+        const officialApiUrl = "https://www.googleapis.com/youtube/v3/videos";
+        const apiResponse = await axios.get(officialApiUrl, {
+            params: {
+                part: 'contentDetails', // We only need the contentDetails for the duration
+                id: videoId,
+                key: YOUTUBE_API_KEY,
+            },
+        });
+        response.status(200).send(apiResponse.data);
+    } catch (error: any) {
+        logger.error(`Error in getVideoDetails for videoId "${videoId}":`, error);
+        response.status(500).send("Server error during video details fetch.");
     }
 });
