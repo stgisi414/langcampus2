@@ -53,7 +53,7 @@ export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secre
         'Spanish': 'letra',
         'French': 'paroles',
         'German': 'songtext',
-        'Japanese': '歌詞',
+        'Japanese': '歌詞 Kanji',
         'Korean': '가사',
         'Italian': 'testo',
         'Portuguese': 'letra',
