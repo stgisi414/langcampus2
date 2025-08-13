@@ -188,7 +188,7 @@ const styles = `
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.85);
+    background-color: rgba(0, 0, 0, 0.99);
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -409,17 +409,69 @@ const styles = `
     height: 1.2em;
     vertical-align: middle;
   }
+
+  .landing-container {
+    margin-top: 3rem;
+    margin-bottom: 2rem;
+    padding: 0 1rem;
+    animation: fadeIn 0.5s ease-in-out;
+  }
+
+  .landing-image {
+    max-width: 100%;
+    width: 500px; /* Adjust as needed */
+    height: auto;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+
+  .landing-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+  }
+
+  .landing-text {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
   
   @media (max-width: 600px) {
     .app-footer {
-      flex-direction: column; /* Stack footer items vertically */
-      gap: 0.75rem;           /* Add some space between the stacked items */
-      align-items: center;    /* Center-align the items */
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem; /* Increased gap for better spacing */
+    }
+
+    /* New styles for the redesigned footer content */
+    .footer-credits {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem; /* Space between the "powered by" text and the logos */
+    }
+
+    .footer-logos {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap; /* Just in case */
+      justify-content: center;
     }
 
     .help-button {
-      margin-left: 0; /* Reset the margin for the new layout */
-    }
+      margin-left: 0;
+      margin-top: 0.5rem; /* Add some space above the help button */
 
     /* Styles for the search button on mobile */
     .search-button {
@@ -576,20 +628,35 @@ const languageToFlagMap: Record<string, string> = {
 // NEW: Footer component
 const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
   <footer className="app-footer">
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <span>© <span style={{ color: 'white' }} >Langcampus</span> powered by</span>
-      <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-        <img src="/gemini_logo.png" alt="Gemini" className="footer-logo" /> Gemini
-      </a>
-      <span>and</span>
-      <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-        <img src="/youtube_logo.png" alt="YouTube" className="footer-logo" /> YouTube
-      </a>
+    {/* This new div will help us with mobile layout */}
+    <div className="footer-credits">
+      <span className="footer-powered-by">
+        © <span style={{ color: 'white' }}>Langcampus</span> powered by
+      </span>
+      {/* This inner div groups the logos */}
+      <div className="footer-logos">
+        <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+          <img src="/gemini_logo.png" alt="Gemini" className="footer-logo" /> Gemini
+        </a>
+        <span> and </span>
+        <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+          <img src="/youtube_logo.png" alt="YouTube" className="footer-logo" /> YouTube
+        </a>
+      </div>
     </div>
     <button className="help-button" onClick={onHelpClick}>?</button>
   </footer>
 );
 
+const LandingComponent: React.FC = () => (
+  <div className="landing-container">
+    <img src="/landing-image.png" alt="Learn languages with music quizzes" className="landing-image" />
+    <h2 className="landing-title">Learn Languages Through Music</h2>
+    <p className="landing-text">
+      Search for any song, take a fill-in-the-blank + multiple choice lyrics quiz, and master new vocabulary while you listen.
+    </p>
+  </div>
+);
 
 const App: React.FC = () => {
   // --- STATE ---
@@ -1377,6 +1444,10 @@ const App: React.FC = () => {
       )}
       
       <main>
+        {gameState === 'SEARCH' && !loading && !error && searchResults.length === 0 && (
+          <LandingComponent />
+        )}
+
         {renderContent()}
       </main>
       <Footer onHelpClick={() => setShowHelpPopup(true)} />
