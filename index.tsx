@@ -650,8 +650,9 @@ const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
 
 const LandingComponent: React.FC = () => (
   <div className="landing-container">
-    <img src="/landing-image.png" alt="Learn languages with music quizzes" className="landing-image" />
     <h2 className="landing-title">Learn Languages Through Music</h2>
+    <br />
+    <img src="/landing-image.png" alt="Learn languages with music quizzes" className="landing-image" />
     <p className="landing-text">
       Search for any song, take a fill-in-the-blank + multiple choice lyrics quiz, and master new vocabulary while you listen.
     </p>
