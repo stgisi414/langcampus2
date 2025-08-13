@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "langcampus-v2-96af4"
-  }
+  },
+  "targets": {
+    "langcampus-v2-96af4": {
+      "hosting": {
+        "langcampus-v2-96af4": [
+          "langcampus-v2-96af4"
+        ],
+        "langcampus-test": [
+          "langcampus-test"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

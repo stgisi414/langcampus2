@@ -11,8 +11,12 @@
     ],
     "rewrites": [
       {
-        "source": "/suggestV2/**",
-        "function": "suggestV2"
+        "source": "/suggestV3{,/**}",
+        "function": {
+          "functionId": "suggestV3",
+          "region": "us-central1",
+          "pinTag": true
+        }
       },
       {
         "source": "**",
