@@ -1,36 +1,31 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { config } from "firebase-functions";
 import * as logger from "firebase-functions/logger";
 import axios from "axios";
 import * as admin from "firebase-admin";
 
-// AI and YouTube API interaction
-// FIX: Removed unused 'FunctionDeclarationSchema' import
-import { GoogleGenerativeAI, Part, HarmCategory, HarmBlockThreshold, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, Part, HarmCategory, HarmBlockThreshold, SchemaType, FunctionDeclarationSchema } from "@google/generative-ai";
 
-// Initialize Firebase Admin and AI SDK
+// Initialize Firebase Admin (this is safe to keep global)
 admin.initializeApp();
 const db = admin.firestore();
 
-// Securely get API keys from the environment
-const YOUTUBE_API_KEY = config().youtube.key;
-const SUPADATA_API_KEY = config().supadata.key;
-const GEMINI_API_KEY = YOUTUBE_API_KEY; // Using the same key
-
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
+// Define the secrets your functions will need
+const secrets = ["YOUTUBE_KEY", "SUPADATA_KEY"];
 
 // --- suggestV3 FUNCTION ---
-export const suggestV3 = onRequest({ cors: true }, async (request, response) => {
+export const suggestV3 = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    // FIX: Use process.env to access secrets
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     logger.info("Suggest function triggered", { query: request.query });
     try {
         const officialApiUrl = "https://www.googleapis.com/youtube/v3/search";
         const apiResponse = await axios.get(officialApiUrl, {
             params: {
-                ...request.query, // This will include 'q' and 'key' from the frontend
+                ...request.query,
                 part: 'snippet',
                 type: 'video',
                 maxResults: 10,
+                key: YOUTUBE_API_KEY,
             },
         });
         response.status(200).send(apiResponse.data);
@@ -42,13 +37,38 @@ export const suggestV3 = onRequest({ cors: true }, async (request, response) => 
 
 
 // --- getPopularVideos CACHING FUNCTION ---
-export const getPopularVideos = onRequest({ cors: true }, async (request, response) => {
+export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    // FIX: Use process.env to access secrets
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const { language } = request.query;
 
     if (typeof language !== 'string') {
         response.status(400).send("Missing 'language' query parameter.");
         return;
     }
+
+    // NEW: Map of languages to their word for "lyrics"
+    const lyricsTranslationMap: Record<string, string> = {
+        'English': 'lyrics',
+        'Spanish': 'letra',
+        'French': 'paroles',
+        'German': 'songtext',
+        'Japanese': '歌詞',
+        'Korean': '가사',
+        'Italian': 'testo',
+        'Portuguese': 'letra',
+        'Russian': 'текст песни',
+        'Arabic': 'كلمات',
+        'Chinese': '歌词',
+        'Hindi': 'गीत',
+        'Turkish': 'şarkı sözleri',
+        'Polish': 'tekst piosenki',
+        'Dutch': 'songtekst',
+        'Swedish': 'låttext',
+        'Finnish': 'sanat'
+    };
+
+    const lyricWord = lyricsTranslationMap[language] || 'lyrics';
 
     const cacheDocRef = db.collection('popularVideosCache').doc(language);
     const CACHE_DURATION_HOURS = 4;
@@ -75,7 +95,8 @@ export const getPopularVideos = onRequest({ cors: true }, async (request, respon
         const apiResponse = await axios.get(officialApiUrl, {
             params: {
                 part: 'snippet',
-                q: `Top music videos ${language}`,
+                // Use the translated word for "lyrics" in the query
+                q: `Top music videos ${language} ${lyricWord}`,
                 type: 'video',
                 chart: 'mostPopular',
                 videoCategoryId: '10',
@@ -101,7 +122,9 @@ export const getPopularVideos = onRequest({ cors: true }, async (request, respon
 });
 
 // --- searchVideos FUNCTION ---
-export const searchVideos = onRequest({ cors: true }, async (request, response) => {
+export const searchVideos = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    // FIX: Use process.env to access secrets
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const { q } = request.query;
     if (typeof q !== 'string') {
         response.status(400).send("Missing 'q' query parameter.");
@@ -126,7 +149,20 @@ export const searchVideos = onRequest({ cors: true }, async (request, response) 
 });
 
 // --- generateQuiz FUNCTION ---
-export const generateQuiz = onRequest({ cors: true }, async (request, response) => {
+export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    // FIX: Use process.env to access secrets
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
+    const SUPADATA_API_KEY = process.env.SUPADATA_KEY;
+    
+    // Ensure the keys are not undefined
+    if (!YOUTUBE_API_KEY || !SUPADATA_API_KEY) {
+        logger.error("API keys are not set in the environment.");
+        response.status(500).send("Server configuration error.");
+        return;
+    }
+
+    const genAI = new GoogleGenerativeAI(YOUTUBE_API_KEY);
+
     const { videoId, language } = request.query;
     if (typeof videoId !== 'string' || typeof language !== 'string') {
         response.status(400).send("Missing 'videoId' or 'language' parameter.");
@@ -149,7 +185,7 @@ export const generateQuiz = onRequest({ cors: true }, async (request, response) 
         const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
         const videoDuration = videoContentDetails.duration || 'PT0M0S';
         
-        const schema = {
+        const schema: FunctionDeclarationSchema = {
             type: SchemaType.OBJECT,
             properties: {
                 questions: {
@@ -196,7 +232,6 @@ export const generateQuiz = onRequest({ cors: true }, async (request, response) 
             fileData: { mimeType: "video/youtube", fileUri: videoUrl }
         };
 
-        // FIX: Use the 'tools' property for function calling instead of 'generationConfig.responseSchema'
         const model = genAI.getGenerativeModel({ 
             model: "gemini-1.5-flash",
             safetySettings: [
