@@ -805,30 +805,29 @@ const App: React.FC = () => {
   }, [language]);
 
   useEffect(() => {
-    const fetchPopularSongs = async () => {
-      if (!language) return; // Don't fetch if language isn't set
-      setPopularSongsLoading(true);
-      try {
-        // Use YouTube's 'mostPopular' chart for music, filtered by language
-        const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=Top music videos ${language}&type=video&chart=mostPopular&videoCategoryId=10&maxResults=8&key=${API_KEY}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch popular songs from YouTube');
-        }
-        const data = await response.json();
-        if (data.items) {
-          setPopularSongs(data.items);
-        }
-      } catch (error) {
-        console.error("Could not fetch popular songs:", error);
-        // Silently fail or set an error state if you prefer
-        setPopularSongs([]); 
-      } finally {
-        setPopularSongsLoading(false);
+  const fetchPopularSongs = async () => {
+    if (!language) return;
+    setPopularSongsLoading(true);
+    try {
+      // Call your new, caching Cloud Function
+      const response = await fetch(`/getPopularVideos?language=${language}`); 
+      if (!response.ok) {
+        throw new Error('Failed to fetch popular songs from the server');
       }
-    };
+      const data = await response.json();
+      if (data.items) {
+        setPopularSongs(data.items);
+      }
+    } catch (error) {
+      console.error("Could not fetch popular songs:", error);
+      setPopularSongs([]); 
+    } finally {
+      setPopularSongsLoading(false);
+    }
+  };
 
-    fetchPopularSongs();
-  }, [language]);
+  fetchPopularSongs();
+}, [language]);
 
   useEffect(() => {
     const styleTag = document.createElement('style');
@@ -1058,39 +1057,24 @@ const App: React.FC = () => {
     setSearchTerm(term);
 
     try {
-      console.log(`[Search Log]: Initiating video search for "${term}"`);
-      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(term)} official music video&type=video&maxResults=6&key=${API_KEY}`);
+      const response = await fetch(`/searchVideos?q=${encodeURIComponent(term)}`);
+      if (!response.ok) throw new Error('Server error during search.');
       
-      if (!response.ok) {
-        let errorMessage = `Failed to fetch videos from YouTube (Status: ${response.status}).`;
-        try {
-            const errorData = await response.json();
-            if (errorData?.error?.message) {
-                errorMessage = `YouTube API Error: ${errorData.error.message}`;
-            }
-        } catch (e) {
-            console.error("Failed to parse YouTube API error response", e);
-        }
-        throw new Error(errorMessage);
-      }
-
       const data = await response.json();
-      console.log('[Search Log]: Video search API response received:', data.items);
       if (data.items && data.items.length > 0) {
         setSearchResults(data.items);
         setGameState('RESULTS');
       } else {
-        setError('No music videos found for your search. Please try different keywords.');
+        setError('No music videos found for your search.');
         setGameState('SEARCH');
       }
     } catch (err: any) {
-      console.error('[Search Log]: An error occurred during the video search:', err);
       setError(err.message || 'An unknown error occurred during search.');
       setGameState('SEARCH'); 
     } finally {
       setLoading(false);
     }
-  }, [API_KEY]);
+  }, []);
 
   const handleSelectVideo = (video: YouTubeVideo) => {
     setPlayerReady(false); 
@@ -1099,112 +1083,18 @@ const App: React.FC = () => {
   };
   
   const handleStartQuiz = async () => {
-    if (!selectedVideo || !isPlayerReady || !playerRef.current) return;
+    if (!selectedVideo || !isPlayerReady) return;
     setLoading(true);
     setError('');
 
-    const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY; 
-
     try {
-        const [transcriptResponse, videoDetailsResponse] = await Promise.all([
-            fetch(`https://api.supadata.ai/v1/youtube/transcript?videoId=${selectedVideo.id.videoId}`, {
-                headers: { 'x-api-key': SUPADATA_API_KEY }
-            }),
-            fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${selectedVideo.id.videoId}&key=${API_KEY}`)
-        ]);
-
-        if (!transcriptResponse.ok) {
-            throw new Error('Failed to fetch transcript from Supadata. Check your API key and the video URL.');
+        const response = await fetch(`/generateQuiz?videoId=${selectedVideo.id.videoId}&language=${language}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || "Failed to generate quiz from the server.");
         }
-        const transcriptData = await transcriptResponse.json();
-        const fullTranscript = transcriptData.content?.map((segment: { text: string; }) => segment.text).join(' ') || '';
 
-        if (!videoDetailsResponse.ok) {
-            throw new Error('Failed to fetch video details from YouTube.');
-        }
-        const videoDetailsData = await videoDetailsResponse.json();
-        const videoSnippet = videoDetailsData.items?.[0]?.snippet || {};
-        const videoContentDetails = videoDetailsData.items?.[0]?.contentDetails || {};
-        const videoDescription = videoSnippet.description || 'No description available.';
-        const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
-        const videoDuration = videoContentDetails.duration;
-        const parseISODuration = (duration: string): number => {
-          const regex = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
-          const matches = duration.match(regex);
-          if (!matches) return 0;
-
-          const hours = parseInt(matches[1] || '0');
-          const minutes = parseInt(matches[2] || '0');
-          const seconds = parseInt(matches[3] || '0');
-
-          return (hours * 3600) + (minutes * 60) + seconds;
-        };
-
-        // Then, inside handleStartQuiz:
-        const videoDurationInSeconds = parseISODuration(videoDuration);
-        const finalQuestionTimestampLimit = Math.max(0, videoDurationInSeconds - 20); // Subtract 20 seconds
-
-        const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
-        
-        const schema = {
-            type: Type.OBJECT,
-            properties: {
-                questions: {
-                    type: Type.ARRAY,
-                    description: "An array of quiz questions based on the song's lyrics, including timestamps.",
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            timestamp: { type: Type.INTEGER, description: "Time in seconds to pause the video. MUST be less than the maximum value.",  maximum: finalQuestionTimestampLimit },
-                            precedingLyric: { type: Type.STRING, description: "The lyric line immediately before the question." },
-                            question: { type: Type.STRING, description: "The lyric with a blank to be filled (e.g., '...to the old town ____')." },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "An array of 4 multiple-choice options." },
-                            correctAnswer: { type: Type.STRING, description: "The correct answer from the options." },
-                        },
-                        required: ["timestamp", "precedingLyric", "question", "options", "correctAnswer"],
-                    },
-                },
-            },
-            required: ["questions"],
-        };
-
-        const videoPart: Part = {
-            fileData: {
-                mimeType: 'video/youtube',
-                fileUri: videoUrl
-            }
-        };
-        
-        const textPart: Part = {
-            text: `Please create a fill-in-the-blank lyrics quiz for the provided music video.
-            
-            Here is additional context for the video:
-            - Video Title: "${selectedVideo.snippet.title}"
-            - Video Description: "${videoDescription}"
-            - Video Tags: "${videoTags}"
-            - Full Song Transcript: "${fullTranscript}"
-            - Video Duration: ${videoDuration}
-
-            IMPORTANT INSTRUCTIONS:
-            1.  Base the quiz questions *directly* on the provided transcript.
-            2.  Generate as many high-quality questions as possible and distribute them evenly throughout the song.
-            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear.
-            4.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
-            5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.
-            6.  FIX: EXTREMELY IMPORTANT: Only use lyrics that are in the user's chosen language of ${language}. Do not create any questions or options from lyrics in other languages, even if they appear in the transcript. This is to ensure the quiz is relevant and in the correct language.
-            7.  CRITICAL TIMING CONSTRAINT: The timestamp for the final question absolutely MUST be at least 20 seconds less than the total video duration (${videoDuration}). Do not place any questions within the last 20 seconds of the video.`
-        };
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
-            contents: [{ parts: [videoPart, textPart] }],
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: schema,
-            },
-        });
-        
-        const quizData: { questions: QuizQuestion[] } = JSON.parse(response.text);
+        const quizData: { questions: QuizQuestion[] } = await response.json();
 
         if (quizData.questions && quizData.questions.length > 0) {
             const processedQuiz = quizData.questions.map(q => ({
@@ -1216,14 +1106,14 @@ const App: React.FC = () => {
             setIsQuizActive(true);
             playerRef.current?.playVideo();
         } else {
-            throw new Error("Could not generate a valid quiz from the video. The transcript might be unavailable.");
+            throw new Error("Could not generate a valid quiz from the video.");
         }
     } catch (err: any) {
-        setError(err.message || 'Failed to generate quiz. The AI may not have been able to analyze this video.');
+        setError(err.message);
         setIsQuizActive(false);
     } finally {
         setLoading(false);
-    }
+    } 
   };
 
   const handleFetchSummary = async () => {

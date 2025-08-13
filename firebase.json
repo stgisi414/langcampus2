@@ -10,6 +10,12 @@
       "**/node_modules/**"
     ],
     "rewrites": [
+      { "source": "/searchVideos", "function": "searchVideos" },
+      { "source": "/generateQuiz", "function": "generateQuiz" },
+      {
+        "source": "/getPopularVideos", // New rule
+        "function": "getPopularVideos"
+      },
       {
         "source": "/suggestV3{,/**}",
         "function": {
