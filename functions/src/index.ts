@@ -5,46 +5,48 @@ import axios from "axios";
 import * as admin from "firebase-admin";
 
 // AI and YouTube API interaction
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// FIX: Removed unused 'FunctionDeclarationSchema' import
+import { GoogleGenerativeAI, Part, HarmCategory, HarmBlockThreshold, SchemaType } from "@google/generative-ai";
 
-// Initialize Firebase Admin SDK
+// Initialize Firebase Admin and AI SDK
 admin.initializeApp();
 const db = admin.firestore();
 
 // Securely get API keys from the environment
 const YOUTUBE_API_KEY = config().youtube.key;
 const SUPADATA_API_KEY = config().supadata.key;
-const GEMINI_API_KEY = YOUTUBE_API_KEY;
+const GEMINI_API_KEY = YOUTUBE_API_KEY; // Using the same key
 
-// Your existing suggestV3 function (no changes needed here)
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+
+// --- suggestV3 FUNCTION ---
 export const suggestV3 = onRequest({ cors: true }, async (request, response) => {
     logger.info("Suggest function triggered", { query: request.query });
     try {
         const officialApiUrl = "https://www.googleapis.com/youtube/v3/search";
         const apiResponse = await axios.get(officialApiUrl, {
             params: {
-                ...request.query,
+                ...request.query, // This will include 'q' and 'key' from the frontend
                 part: 'snippet',
                 type: 'video',
                 maxResults: 10,
             },
         });
         response.status(200).send(apiResponse.data);
-    } catch (error) {
+    } catch (error: any) {
         logger.error("CRITICAL ERROR in suggest function:", error);
         response.status(500).send("The server function encountered a critical error.");
     }
 });
 
 
-// --- NEW CACHING FUNCTION ---
+// --- getPopularVideos CACHING FUNCTION ---
 export const getPopularVideos = onRequest({ cors: true }, async (request, response) => {
     const { language } = request.query;
 
-    const YOUTUBE_API_KEY = config().youtube.key;
-
-    if (typeof language !== 'string' || typeof key !== 'string') {
-        response.status(400).send("Missing 'language' or 'key' query parameter.");
+    if (typeof language !== 'string') {
+        response.status(400).send("Missing 'language' query parameter.");
         return;
     }
 
@@ -55,10 +57,7 @@ export const getPopularVideos = onRequest({ cors: true }, async (request, respon
         const doc = await cacheDocRef.get();
         if (doc.exists) {
             const data = doc.data();
-            
-            // --- FIX IS HERE ---
-            // Add a check to ensure data is not undefined before using it
-            if (data && data.timestamp) { 
+            if (data && data.timestamp) {
                 const now = new Date();
                 const lastFetched = data.timestamp.toDate();
                 const hoursDiff = (now.getTime() - lastFetched.getTime()) / (1000 * 60 * 60);
@@ -71,7 +70,6 @@ export const getPopularVideos = onRequest({ cors: true }, async (request, respon
             }
         }
 
-        // If cache is stale or doesn't exist, fetch from YouTube API
         logger.info(`Fetching fresh data for language: ${language}`);
         const officialApiUrl = "https://www.googleapis.com/youtube/v3/search";
         const apiResponse = await axios.get(officialApiUrl, {
@@ -87,16 +85,13 @@ export const getPopularVideos = onRequest({ cors: true }, async (request, respon
         });
         
         const videos = apiResponse.data;
-
-        // Save the new data to the cache in Firestore
         await cacheDocRef.set({
             videos: videos,
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
         });
-        
         response.status(200).send(videos);
 
-    } catch (error) {
+    } catch (error: any) {
         if (error.response) {
             logger.error("Axios error response:", error.response.data);
         }
@@ -105,7 +100,7 @@ export const getPopularVideos = onRequest({ cors: true }, async (request, respon
     }
 });
 
-// --- NEW FUNCTION: searchVideos ---
+// --- searchVideos FUNCTION ---
 export const searchVideos = onRequest({ cors: true }, async (request, response) => {
     const { q } = request.query;
     if (typeof q !== 'string') {
@@ -130,20 +125,15 @@ export const searchVideos = onRequest({ cors: true }, async (request, response) 
     }
 });
 
-
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-// --- NEW FUNCTION: generateQuiz ---
+// --- generateQuiz FUNCTION ---
 export const generateQuiz = onRequest({ cors: true }, async (request, response) => {
     const { videoId, language } = request.query;
-
     if (typeof videoId !== 'string' || typeof language !== 'string') {
         response.status(400).send("Missing 'videoId' or 'language' parameter.");
         return;
     }
 
     try {
-        // Step 1: Fetch Transcript and Video Details
         const [transcriptResponse, videoDetailsResponse] = await Promise.all([
             axios.get(`https://api.supadata.ai/v1/youtube/transcript?videoId=${videoId}`, {
                 headers: { 'x-api-key': SUPADATA_API_KEY }
@@ -158,35 +148,21 @@ export const generateQuiz = onRequest({ cors: true }, async (request, response) 
         const videoDescription = videoSnippet.description || 'No description available.';
         const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
         const videoDuration = videoContentDetails.duration || 'PT0M0S';
-
-        // Step 2: Prepare Prompt and Schema for Gemini
-        const parseISODuration = (duration: string): number => {
-            const regex = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
-            const matches = duration.match(regex);
-            if (!matches) return 0;
-            const hours = parseInt(matches[1] || '0');
-            const minutes = parseInt(matches[2] || '0');
-            const seconds = parseInt(matches[3] || '0');
-            return (hours * 3600) + (minutes * 60) + seconds;
-        };
-
-        const videoDurationInSeconds = parseISODuration(videoDuration);
-        const finalQuestionTimestampLimit = Math.max(0, videoDurationInSeconds - 20);
-
+        
         const schema = {
-            type: "OBJECT", // Use string literals for enums
+            type: SchemaType.OBJECT,
             properties: {
                 questions: {
-                    type: "ARRAY",
-                    description: "An array of quiz questions...",
+                    type: SchemaType.ARRAY,
+                    description: "An array of quiz questions based on the song's lyrics, including timestamps.",
                     items: {
-                        type: "OBJECT",
+                        type: SchemaType.OBJECT,
                         properties: {
-                            timestamp: { type: "INTEGER", description: "Time in seconds...", maximum: finalQuestionTimestampLimit },
-                            precedingLyric: { type: "STRING", description: "The lyric line before the question." },
-                            question: { type: "STRING", description: "The lyric with a blank..." },
-                            options: { type: "ARRAY", items: { type: "STRING" }, description: "4 multiple-choice options." },
-                            correctAnswer: { type: "STRING", description: "The correct answer." },
+                            timestamp: { type: SchemaType.INTEGER, description: "Time in seconds to pause the video." },
+                            precedingLyric: { type: SchemaType.STRING, description: "The lyric line immediately before the question." },
+                            question: { type: SchemaType.STRING, description: "The lyric with a blank to be filled (e.g., '...to the old town ____')." },
+                            options: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "An array of 4 multiple-choice options." },
+                            correctAnswer: { type: SchemaType.STRING, description: "The correct answer from the options." },
                         },
                         required: ["timestamp", "precedingLyric", "question", "options", "correctAnswer"],
                     },
@@ -194,7 +170,7 @@ export const generateQuiz = onRequest({ cors: true }, async (request, response) 
             },
             required: ["questions"],
         };
-
+        
         const textPart: Part = {
             text: `Please create a fill-in-the-blank lyrics quiz for the provided music video.
             
@@ -220,19 +196,34 @@ export const generateQuiz = onRequest({ cors: true }, async (request, response) 
             fileData: { mimeType: "video/youtube", fileUri: videoUrl }
         };
 
-        // Step 3: Call Gemini
+        // FIX: Use the 'tools' property for function calling instead of 'generationConfig.responseSchema'
         const model = genAI.getGenerativeModel({ 
             model: "gemini-1.5-flash",
-            generationConfig: { responseMimeType: 'application/json' },
-            tools: [{ functionDeclarations: [{ name: 'output_quiz', description: 'The quiz questions', parameters: schema }] }]
+            safetySettings: [
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            ],
+            tools: [{
+                functionDeclarations: [{
+                    name: "output_quiz",
+                    description: "Formats the quiz questions and answers.",
+                    parameters: schema,
+                }]
+            }]
         });
 
         const result = await model.generateContent({
-            contents: [{ parts: [videoPart, textPart] }]
+            contents: [{ role: "user", parts: [videoPart, textPart] }]
         });
         
-        const quizData = result.response.candidates[0].content.parts[0].functionCall.args;
-        response.status(200).send(quizData);
+        const call = result.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+        if (!call || !call.args) {
+            throw new Error("Failed to get a valid function call response from the AI.");
+        }
+        
+        response.status(200).send(call.args);
 
     } catch (error: any) {
         logger.error(`Error generating quiz for videoId "${videoId}":`, error);
