@@ -907,6 +907,21 @@ const App: React.FC = () => {
         const videoDescription = videoSnippet.description || 'No description available.';
         const videoTags = videoSnippet.tags?.join(', ') || 'No tags available.';
         const videoDuration = videoContentDetails.duration;
+        const parseISODuration = (duration: string): number => {
+          const regex = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
+          const matches = duration.match(regex);
+          if (!matches) return 0;
+
+          const hours = parseInt(matches[1] || '0');
+          const minutes = parseInt(matches[2] || '0');
+          const seconds = parseInt(matches[3] || '0');
+
+          return (hours * 3600) + (minutes * 60) + seconds;
+        };
+
+        // Then, inside handleStartQuiz:
+        const videoDurationInSeconds = parseISODuration(videoDuration);
+        const finalQuestionTimestampLimit = Math.max(0, videoDurationInSeconds - 20); // Subtract 20 seconds
 
         const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
         
@@ -919,7 +934,7 @@ const App: React.FC = () => {
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            timestamp: { type: Type.INTEGER, description: "Time in seconds to pause the video for the question." },
+                            timestamp: { type: Type.INTEGER, description: "Time in seconds to pause the video. MUST be less than the maximum value.",  maximum: finalQuestionTimestampLimit },
                             precedingLyric: { type: Type.STRING, description: "The lyric line immediately before the question." },
                             question: { type: Type.STRING, description: "The lyric with a blank to be filled (e.g., '...to the old town ____')." },
                             options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "An array of 4 multiple-choice options." },
@@ -952,10 +967,11 @@ const App: React.FC = () => {
             IMPORTANT INSTRUCTIONS:
             1.  Base the quiz questions *directly* on the provided transcript.
             2.  Generate as many high-quality questions as possible and distribute them evenly throughout the song.
-            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear. The timestamp for the final question MUST be at least 15 seconds before the video's total duration to ensure it is asked before the song finishes.
+            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear.
             4.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
             5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.
-            6.  FIX: EXTREMELY IMPORTANT: Only use lyrics that are in the user's chosen language of ${language}. Do not create any questions or options from lyrics in other languages, even if they appear in the transcript. This is to ensure the quiz is relevant and in the correct language.`
+            6.  FIX: EXTREMELY IMPORTANT: Only use lyrics that are in the user's chosen language of ${language}. Do not create any questions or options from lyrics in other languages, even if they appear in the transcript. This is to ensure the quiz is relevant and in the correct language.
+            7.  CRITICAL TIMING CONSTRAINT: The timestamp for the final question absolutely MUST be at least 20 seconds less than the total video duration (${videoDuration}). Do not place any questions within the last 20 seconds of the video.`
         };
 
         const response = await ai.models.generateContent({
