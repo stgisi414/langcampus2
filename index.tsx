@@ -553,6 +553,25 @@ const voiceConfigMap = {
     'sv-SE': { prebuiltVoiceConfig: { voiceName: 'Zubenelgenubi' } },
     'fi-FI': { prebuiltVoiceConfig: { voiceName: 'Vindemiatrix' } },
 };
+const languageToFlagMap: Record<string, string> = {
+  'English': '🇺🇸',
+  'Spanish': '🇪🇸',
+  'French': '🇫🇷',
+  'German': '🇩🇪',
+  'Japanese': '🇯🇵',
+  'Korean': '🇰🇷',
+  'Italian': '🇮🇹',
+  'Portuguese': '🇧🇷',
+  'Russian': '🇷🇺',
+  'Arabic': '🇪🇬',
+  'Chinese': '🇨🇳',
+  'Hindi': '🇮🇳',
+  'Turkish': '🇹🇷',
+  'Polish': '🇵🇱',
+  'Dutch': '🇳🇱',
+  'Swedish': '🇸🇪',
+  'Finnish': '🇫🇮',
+};
 
 // NEW: Footer component
 const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
@@ -1280,7 +1299,9 @@ const App: React.FC = () => {
           disabled={gameState === 'QUIZ' || gameState === 'END' || gameState === 'POST_QUIZ_PLAYBACK'}
         >
           {supportedLanguages.map(lang => (
-            <option key={lang} value={lang}>{lang}</option>
+            <option key={lang} value={lang}>
+              {languageToFlagMap[lang]} {lang}
+            </option>
           ))}
         </select>
       </div>
