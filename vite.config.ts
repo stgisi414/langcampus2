@@ -24,10 +24,10 @@ export default defineConfig(({ mode }) => {
         server: {
             port: 8080,
             proxy: {
-                '/suggestV2': {
+                '/suggestV3': { // <-- Change to suggestV3
                     target: 'https://us-central1-langcampus-v2-96af4.cloudfunctions.net',
                     changeOrigin: true,
-                    rewrite: (path) => path.replace(/^\/suggestV2/, '/suggestV2'),
+                    rewrite: (path) => path.replace(/^\/suggestV3/, '/suggestV3'), // <-- Change to suggestV3
                 }
             }
         }

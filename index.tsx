@@ -619,7 +619,7 @@ const App: React.FC = () => {
       const timeoutId = setTimeout(async () => {
           try {
               // THIS IS THE CORRECTED LINE: Only send the 'key' and 'q' parameters.
-              const url = `/suggestV3?key=${API_KEY}&q=${encodeURIComponent(searchTerm)}`;
+              const url = `/suggestV3?key=${API_KEY}&q=${encodeURIComponent(searchTerm)}`; // <-- Change to suggestV3
               console.log(`[Predictive Search Log]: Making API call to ${url}`);
 
               const response = await fetch(url, { signal: controller.signal });
