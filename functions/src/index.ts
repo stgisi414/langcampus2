@@ -98,7 +98,7 @@ export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secre
                 type: 'video',
                 chart: 'mostPopular',
                 videoCategoryId: '10',
-                maxResults: 6,
+                maxResults: 8,
                 key: YOUTUBE_API_KEY,
             },
         });
