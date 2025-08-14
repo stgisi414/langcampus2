@@ -863,6 +863,27 @@ const App: React.FC = () => {
   }, [language]);
 
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const videoIdFromUrl = urlParams.get('video_id');
+
+    if (videoIdFromUrl) {
+      // Create a temporary video object to pass to the selection handler
+      const videoFromUrl: YouTubeVideo = {
+        id: { videoId: videoIdFromUrl },
+        snippet: {
+          // We don't have the real snippet yet, so we use placeholders
+          title: 'Loading video...',
+          thumbnails: {
+            high: { url: '' }
+          }
+        }
+      };
+      // Immediately try to select and validate this video
+      handleSelectVideo(videoFromUrl);
+    }
+  }, []);
+
+  useEffect(() => {
   const fetchPopularSongs = async () => {
     if (!language) return;
     setPopularSongsLoading(true);
@@ -1134,10 +1155,12 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleSelectVideo = async (video: YouTubeVideo) => {
+   const handleSelectVideo = async (video: YouTubeVideo) => {
     setLoading(true);
     setError('');
     try {
+      setSearchResults([video]); 
+      
       const response = await fetch(`/getVideoDetails?videoId=${video.id.videoId}`);
       if (!response.ok) {
         throw new Error('Could not verify video length.');
@@ -1155,20 +1178,24 @@ const App: React.FC = () => {
       if (durationInSeconds > FIFTEEN_MINUTES) {
         setError('Please select a video that is 15 minutes or shorter.');
         setLoading(false);
-        return; // Stop the function here
+        setGameState('SEARCH');
+        return; 
       }
 
-      // If duration is okay, proceed as normal
       setPlayerReady(false);
       setSelectedVideo(video);
       setGameState('QUIZ');
+      
+      // ADD THIS LINE to update the URL
+      window.history.pushState({}, '', `/?video_id=${video.id.videoId}`);
 
     } catch (err: any) {
       setError(err.message || 'An error occurred selecting the video.');
+      setGameState('SEARCH');
     } finally {
       setLoading(false);
     }
-  };
+  }; 
   
   const handleStartQuiz = async () => {
     if (!selectedVideo || !isPlayerReady) return;
@@ -1303,6 +1330,7 @@ const App: React.FC = () => {
     setSummary('');
     setSummaryLoading(false);
     lastPlaybackTimeRef.current = 0;
+    window.history.pushState({}, '', '/');
   };
   
   const handleClearHistory = () => {
