@@ -545,6 +545,49 @@ const styles = `
     }
   }
   
+   .landscape-notifier {
+    display: none; /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    margin-top: 1rem;
+    color: #9e9e9e; /* Light gray */
+    animation: pulse 2.5s infinite ease-in-out;
+  }
+
+  .material-symbols-outlined {
+    /* Hide the text until the icon font loads */
+    color: transparent;
+    -webkit-user-select: none; /* Safari */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* IE10+/Edge */
+    user-select: none; /* Standard */
+  }
+
+  .landscape-notifier .material-symbols-outlined {
+    font-size: 40px;
+    color: #9e9e9e; /* This color will apply correctly after the font loads */
+  }
+  
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 0.7;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @media (max-width: 768px) and (orientation: portrait) {
+    .landscape-notifier {
+      display: flex; /* Shown only on mobile in portrait */
+    }
+     .options-grid {
+      grid-template-columns: 1fr; /* Stack options vertically on small portrait screens */
+    }
+  }
+
   @media (max-width: 600px) {
     .app-footer {
       /* Keep the footer content in a single row */
@@ -739,6 +782,13 @@ const languageToFlagMap: Record<string, string> = {
   'Swedish': '🇸🇪',
   'Finnish': '🇫🇮',
 };
+
+const LandscapeNotifier: React.FC = () => (
+  <div className="landscape-notifier">
+    <span className="material-symbols-outlined">screen_rotation</span>
+    <span>Please rotate your device for the best experience</span>
+  </div>
+);
 
 // NEW: Footer component
 const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
@@ -1354,6 +1404,7 @@ const App: React.FC = () => {
     const currentQuestion = quiz[currentQuestionIndex];
 
     return (
+      <>
         <div className="quiz-area">
             {selectedVideo && (
                 <YouTube
@@ -1449,6 +1500,9 @@ const App: React.FC = () => {
                 </div>
             )}
         </div>
+
+        <LandscapeNotifier />
+      </>
     );
   }
 
