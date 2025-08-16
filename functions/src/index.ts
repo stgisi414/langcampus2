@@ -1,33 +1,71 @@
-import { onRequest } from "firebase-functions/v2/https";
+import { onRequest } from "firebase-functions/v2/https"; // This is the corrected line
 import * as logger from "firebase-functions/logger";
-import axios from "axios";
+import axios, { AxiosRequestConfig } from "axios";
 import * as admin from "firebase-admin";
 
 import { GoogleGenerativeAI, Part, HarmCategory, HarmBlockThreshold, SchemaType, FunctionDeclarationSchema } from "@google/generative-ai";
 
-// Initialize Firebase Admin (this is safe to keep global)
+// Initialize Firebase Admin
 admin.initializeApp();
 const db = admin.firestore();
 
 // Define the secrets your functions will need
-const secrets = ["YOUTUBE_KEY", "SUPADATA_KEY"];
+const secrets = ["YOUTUBE_KEY", "YOUTUBE_KEY_BACKUP", "SUPADATA_KEY"];
 
-// --- suggestV3 FUNCTION ---
+// --- NEW: Reusable YouTube API Requester with Fallback Logic ---
+const youtubeApiRequest = async (config: AxiosRequestConfig) => {
+    const PRIMARY_KEY = process.env.YOUTUBE_KEY;
+    const BACKUP_KEY = process.env.YOUTUBE_KEY_BACKUP;
+    const baseUrl = "https://www.googleapis.com/youtube/v3";
+
+    // Try with the primary key first
+    try {
+        const fullConfig = {
+            ...config,
+            url: `${baseUrl}${config.url}`,
+            params: { ...config.params, key: PRIMARY_KEY }
+        };
+        logger.info("Attempting YouTube API request with primary key.");
+        const response = await axios(fullConfig);
+        return response.data;
+    } catch (error: any) {
+        // Check if the error is a quota exceeded error
+        const isQuotaError = error.response?.status === 403 &&
+                             error.response?.data?.error?.errors?.[0]?.reason === 'quotaExceeded';
+
+        if (isQuotaError && BACKUP_KEY) {
+            logger.warn("Primary YouTube API key quota exceeded. Falling back to backup key.");
+            // If it's a quota error and a backup key exists, retry with the backup key
+            const fallbackConfig = {
+                ...config,
+                url: `${baseUrl}${config.url}`,
+                params: { ...config.params, key: BACKUP_KEY }
+            };
+            const fallbackResponse = await axios(fallbackConfig);
+            return fallbackResponse.data;
+        } else {
+            // If it's not a quota error or there's no backup key, throw the original error
+            logger.error("YouTube API request failed with a non-quota error or no backup key is available.");
+            throw error;
+        }
+    }
+};
+
+
+// --- suggestV3 FUNCTION (Refactored) ---
 export const suggestV3 = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     logger.info("Suggest function triggered", { query: request.query });
     try {
-        const officialApiUrl = "https://www.googleapis.com/youtube/v3/search";
-        const apiResponse = await axios.get(officialApiUrl, {
+        const apiResponseData = await youtubeApiRequest({
+            url: "/search",
             params: {
                 ...request.query,
                 part: 'snippet',
                 type: 'video',
                 maxResults: 10,
-                key: YOUTUBE_API_KEY,
             },
         });
-        response.status(200).send(apiResponse.data);
+        response.status(200).send(apiResponseData);
     } catch (error: any) {
         logger.error("CRITICAL ERROR in suggest function:", error);
         response.status(500).send("The server function encountered a critical error.");
@@ -35,40 +73,18 @@ export const suggestV3 = onRequest({ cors: true, invoker: 'public', secrets }, a
 });
 
 
-// --- getPopularVideos CACHING FUNCTION ---
+// --- getPopularVideos CACHING FUNCTION (Refactored) ---
 export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const { language } = request.query;
-
     if (typeof language !== 'string') {
         response.status(400).send("Missing 'language' query parameter.");
         return;
     }
 
-    // NEW: A more accurate map of full search queries for each language
     const searchQueryMap: Record<string, string> = {
-        'English': 'top music videos with lyrics',
-        'Spanish': 'mejores videos musicales con letra',
-        'French': 'meilleurs clips vidéo avec paroles',
-        'German': 'Top-Musikvideos mit Songtexten',
-        'Japanese': '人気曲 歌詞 邦楽', // "Popular songs lyrics Japanese music" - strongly favors Kanji
-        'Korean': '인기 뮤직 비디오 가사',
-        'Italian': 'migliori video musicali con testo',
-        'Portuguese': 'melhores videoclipes com letra',
-        'Russian': 'популярные музыкальные клипы с текстом песни',
-        'Arabic': 'أفضل فيديوهات موسيقية مع الكلمات',
-        'Chinese': '热门音乐视频带歌词',
-        'Hindi': 'लिरिक्स के साथ टॉप म्यूजिक वीडियो',
-        'Turkish': 'şarkı sözleri ile en iyi müzik videoları',
-        'Polish': 'najlepsze teledyski z tekstem',
-        'Dutch': 'top muziekvideo\'s met songtekst',
-        'Swedish': 'bästa musikvideor med låttext',
-        'Finnish': 'suosituimmat musiikkivideot sanoilla'
+        'English': 'official lyric video top hits', 'Spanish': 'letra oficial exitos', 'French': 'paroles officielles top chansons', 'German': 'beliebte deutsche lieder offizielles textvideo', 'Japanese': '公式 歌詞付き 人気曲', 'Korean': '가사 공식 인기 노래', 'Italian': 'testo ufficiale canzoni popolari', 'Portuguese': 'letra oficial musicas populares', 'Russian': 'официальное лирик-видео популярные песни', 'Arabic': 'فيديو كلمات الأغاني الرسمي', 'Chinese': '官方歌詞MV 流行歌曲', 'Hindi': 'लोकप्रिय हिंदी गीत आधिकारिक गीत वीडियो', 'Turkish': 'resmi şarkı sözü videoları popüler', 'Polish': 'oficjalne wideo z tekstem popularne piosenki', 'Dutch': 'officiële songtekst video populaire liedjes', 'Swedish': 'officiell textvideo populära låtar', 'Finnish': 'virallinen sanoitusvideo suosittuja kappaleita'
     };
-
-    // Use the specific query for the selected language, or a default
     const searchQuery = searchQueryMap[language] || `top music videos ${language} lyrics`;
-
     const cacheDocRef = db.collection('popularVideosCache').doc(language);
     const CACHE_DURATION_HOURS = 4;
 
@@ -76,11 +92,8 @@ export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secre
         const doc = await cacheDocRef.get();
         if (doc.exists) {
             const data = doc.data();
-            if (data && data.timestamp) {
-                const now = new Date();
-                const lastFetched = data.timestamp.toDate();
-                const hoursDiff = (now.getTime() - lastFetched.getTime()) / (1000 * 60 * 60);
-
+            if (data?.timestamp) {
+                const hoursDiff = (new Date().getTime() - data.timestamp.toDate().getTime()) / 3600000;
                 if (hoursDiff < CACHE_DURATION_HOURS) {
                     logger.info(`Serving cached data for language: ${language}`);
                     response.status(200).send(data.videos);
@@ -89,67 +102,61 @@ export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secre
             }
         }
 
-        logger.info(`Fetching fresh data for language: ${language} with query: "${searchQuery}"`);
-        const officialApiUrl = "https://www.googleapis.com/youtube/v3/search";
-        const apiResponse = await axios.get(officialApiUrl, {
+        logger.info(`Fetching fresh lyric videos for language: ${language} with query: "${searchQuery}"`);
+        const apiResponseData = await youtubeApiRequest({
+            url: "/search",
             params: {
-                part: 'snippet',
-                q: searchQuery, // Use the new, fully translated search query
-                type: 'video',
-                chart: 'mostPopular',
-                videoCategoryId: '10',
-                maxResults: 8,
-                key: YOUTUBE_API_KEY,
+                part: 'snippet', q: searchQuery, type: 'video', videoCategoryId: '10', videoDuration: 'short', videoCaption: 'closedCaption', maxResults: 25,
             },
         });
         
-        const videos = apiResponse.data;
+        const filteredVideos = apiResponseData.items
+            .filter((item: any) => item.id.kind === 'youtube#video')
+            .slice(0, 8);
+        
+        const responsePayload = { items: filteredVideos };
+
         await cacheDocRef.set({
-            videos: videos,
+            videos: responsePayload,
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
         });
-        response.status(200).send(videos);
+
+        response.status(200).send(responsePayload);
 
     } catch (error: any) {
-        if (error.response) {
-            logger.error("Axios error response:", error.response.data);
-        }
+        if (axios.isAxiosError(error)) logger.error("Axios error response:", error.response?.data);
         logger.error(`CRITICAL ERROR in getPopularVideos for language ${language}:`, error);
         response.status(500).send("The server function encountered a critical error fetching popular videos.");
     }
 });
 
-// --- searchVideos FUNCTION ---
+// --- searchVideos FUNCTION (Refactored) ---
 export const searchVideos = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const { q } = request.query;
     if (typeof q !== 'string') {
         response.status(400).send("Missing 'q' query parameter.");
         return;
     }
     try {
-        const officialApiUrl = "https://www.googleapis.com/youtube/v3/search";
-        const apiResponse = await axios.get(officialApiUrl, {
-            params: {
-                part: 'snippet',
-                q: `${q} official music video`,
-                type: 'video',
-                maxResults: 6,
-                key: YOUTUBE_API_KEY,
-            },
+        const apiResponseData = await youtubeApiRequest({
+            url: "/search",
+            params: { part: 'snippet', q: `${q} official music video`, type: 'video', maxResults: 6, },
         });
-        response.status(200).send(apiResponse.data);
+        response.status(200).send(apiResponseData);
     } catch (error: any) {
         logger.error(`Error in searchVideos for query "${q}":`, error);
         response.status(500).send("Server error during video search.");
     }
 });
 
-// --- generateQuiz FUNCTION ---
+// --- generateQuiz FUNCTION (No change needed here, but ensure secrets array is updated) ---
 export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    // ... This function's internal logic remains the same ...
+    // Just make sure its "secrets" array includes "YOUTUBE_KEY_BACKUP"
     const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const SUPADATA_API_KEY = process.env.SUPADATA_KEY;
     
+    // The rest of this function is unchanged
     if (!YOUTUBE_API_KEY || !SUPADATA_API_KEY) {
         logger.error("API keys are not set in the environment.");
         response.status(500).send("Server configuration error.");
@@ -261,25 +268,19 @@ export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }
         response.status(500).send("Failed to generate quiz.");
     }
 });
-
-// --- getVideoDetails FUNCTION ---
+// --- getVideoDetails FUNCTION (Refactored) ---
 export const getVideoDetails = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const { videoId } = request.query;
     if (typeof videoId !== 'string') {
         response.status(400).send("Missing 'videoId' query parameter.");
         return;
     }
     try {
-        const officialApiUrl = "https://www.googleapis.com/youtube/v3/videos";
-        const apiResponse = await axios.get(officialApiUrl, {
-            params: {
-                part: 'contentDetails', // We only need the contentDetails for the duration
-                id: videoId,
-                key: YOUTUBE_API_KEY,
-            },
+        const apiResponseData = await youtubeApiRequest({
+            url: "/videos",
+            params: { part: 'contentDetails', id: videoId, },
         });
-        response.status(200).send(apiResponse.data);
+        response.status(200).send(apiResponseData);
     } catch (error: any) {
         logger.error(`Error in getVideoDetails for videoId "${videoId}":`, error);
         response.status(500).send("Server error during video details fetch.");

@@ -556,18 +556,17 @@ const styles = `
     animation: pulse 2.5s infinite ease-in-out;
   }
 
-  .material-symbols-outlined {
-    /* Hide the text until the icon font loads */
-    color: transparent;
-    -webkit-user-select: none; /* Safari */
-    -moz-user-select: none; /* Firefox */
-    -ms-user-select: none; /* IE10+/Edge */
-    user-select: none; /* Standard */
-  }
-
   .landscape-notifier .material-symbols-outlined {
-    font-size: 40px;
-    color: #9e9e9e; /* This color will apply correctly after the font loads */
+    font-family: 'Material Symbols Outlined'; /* Specify the font family */
+    font-size: 40px;      /* Control the icon's size */
+    width: 40px;          /* Give it a fixed width */
+    height: 40px;         /* Give it a fixed height */
+    color: #9e9e9e;      /* Set the final icon color */
+    line-height: 1;       /* Ensure it's vertically centered */
+    text-align: center;     /* Ensure it's horizontally centered */
+    /* Prevent the text content from being selectable */
+    user-select: none;
+    -webkit-user-select: none;
   }
   
   @keyframes pulse {
