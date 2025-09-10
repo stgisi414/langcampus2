@@ -25,8 +25,7 @@
         "source": "/suggestV3{,/**}",
         "function": {
           "functionId": "suggestV3",
-          "region": "us-central1",
-          "pinTag": true
+          "region": "us-central1"
         }
       },
       { "source": "/getSummary", "function": "getSummary" },
