@@ -15,7 +15,7 @@ const styles = `
     text-align: center;
     display: flex;
     flex-direction: column;
-    gap: 2rem;[]
+    gap: 2rem;
     min-height: 100vh;
   }
 
@@ -299,7 +299,6 @@ const styles = `
     margin-top: 1.5rem;
   }
 
-  /* NEW: Help Popup Styles */
   .help-popup-overlay {
     position: fixed;
     top: 0;
@@ -347,7 +346,6 @@ const styles = `
     cursor: pointer;
   }
   
-  /* NEW: Dropdown styles */
   .search-dropdown {
     position: absolute;
     top: 100%;
@@ -394,7 +392,6 @@ const styles = `
     margin-top: 0;
   }
   
-  /* NEW: Footer styles */
   .app-footer {
     width: 100%;
     text-align: center;
@@ -417,7 +414,7 @@ const styles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 3rem; /* Adds space between the image and the text column */
+    gap: 3rem;
     margin-top: 3rem;
     margin-bottom: 2rem;
     padding: 0 1rem;
@@ -425,26 +422,26 @@ const styles = `
   }
 
   .landing-image {
-    max-width: 45%; /* Control the size of the image */
+    max-width: 45%;
     height: auto;
     border-radius: 12px;
     box-shadow: 0 8px 30px rgba(0,0,0,0.4);
   }
 
   .landing-content {
-    flex: 1; /* Allows the text column to take up the remaining space */
-    text-align: left; /* Aligns text to the left for desktop */
+    flex: 1;
+    text-align: left;
   }
 
   .landing-title {
-    font-size: 2.5rem; /* Slightly larger for desktop */
+    font-size: 2.5rem;
     font-weight: 700;
     color: var(--text-primary);
     margin-bottom: 1rem;
   }
 
   .landing-text {
-    font-size: 1.2rem; /* Slightly larger for desktop */
+    font-size: 1.2rem;
     color: var(--text-secondary);
     max-width: 600px;
     line-height: 1.6;
@@ -475,39 +472,33 @@ const styles = `
     gap: 1.5rem;
   }
 
-  .popular-song-card {
-    /* You can add specific overrides for the popular song cards if needed */
-    /* For example, a slightly different hover effect */
-  }
-
   @media (max-width: 768px) {
     .landing-container {
-      flex-direction: column; /* Stacks image and text vertically */
+      flex-direction: column;
       gap: 2rem;
     }
 
     .landing-image {
       max-width: 100%;
       width: 500px; 
-      order: 2; /* This moves the image to be second */
+      order: 2;
     }
 
     .landing-content {
-      order: 1; /* This moves the text content to be first */
-      text-align: center; /* Center the text on mobile */
+      order: 1;
+      text-align: center;
     }
 
     .landing-title {
-      font-size: 2.2rem; /* Adjust font size for mobile */
+      font-size: 2.2rem;
     }
 
     .landing-text {
-      font-size: 1.1rem; /* Adjust font size for mobile */
+      font-size: 1.1rem;
     }
   }
 
   .app-logo {
-    /* Slower and smoother animation */
     animation: logo-animation 3.5s ease-in-out;
     display: inline-block;
   }
@@ -519,13 +510,10 @@ const styles = `
       margin-right: 5px;
     }
     20% {
-      /* Reduced scale */
       transform: scale(2.0);
-      /* Increased margin */
       margin-right: 40px; 
     }
     35%, 65% {
-      /* Reduced pulse scale */
       transform: scale(2.2);
       margin-right: 45px;
     }
@@ -549,25 +537,24 @@ const styles = `
   }
   
    .landscape-notifier {
-    display: none; /* Hidden by default */
+    display: none;
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
     padding: 0.5rem;
     margin-top: 1rem;
-    color: #9e9e9e; /* Light gray */
+    color: #9e9e9e;
     animation: pulse 2.5s infinite ease-in-out;
   }
 
   .landscape-notifier .material-symbols-outlined {
-    font-family: 'Material Symbols Outlined'; /* Specify the font family */
-    font-size: 40px;      /* Control the icon's size */
-    width: 40px;          /* Give it a fixed width */
-    height: 40px;         /* Give it a fixed height */
-    color: #9e9e9e;      /* Set the final icon color */
-    line-height: 1;       /* Ensure it's vertically centered */
-    text-align: center;     /* Ensure it's horizontally centered */
-    /* Prevent the text content from being selectable */
+    font-family: 'Material Symbols Outlined';
+    font-size: 40px;
+    width: 40px;
+    height: 40px;
+    color: #9e9e9e;
+    line-height: 1;
+    text-align: center;
     user-select: none;
     -webkit-user-select: none;
   }
@@ -583,58 +570,49 @@ const styles = `
 
   @media (max-width: 768px) and (orientation: portrait) {
     .landscape-notifier {
-      display: flex; /* Shown only on mobile in portrait */
+      display: flex;
     }
      .options-grid {
-      grid-template-columns: 1fr; /* Stack options vertically on small portrait screens */
+      grid-template-columns: 1fr;
     }
   }
 
   @media (max-width: 600px) {
     .app-footer {
-      /* Keep the footer content in a single row */
       flex-direction: row; 
-      /* Vertically center the items in the row */
       align-items: center; 
       gap: 1rem;
     }
-
-    /* New styles for the redesigned footer content */
     .footer-credits {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 0.5rem; /* Space between the "powered by" text and the logos */
+      gap: 0.5rem;
     }
-
     .footer-logos {
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      flex-wrap: wrap; /* Just in case */
+      flex-wrap: wrap;
       justify-content: center;
     }
-
     .help-button {
       margin-left: 0;
-      margin-top: 0.5rem; /* Add some space above the help button */
-
-    /* Styles for the search button on mobile */
+      margin-top: 0.5rem;
+    }
     .search-button {
-      padding: 0.75rem;     /* Make the button circular */
-      width: 44px;          /* Set a fixed width */
-      height: 44px;         /* Set a fixed height */
+      padding: 0.75rem;
+      width: 44px;
+      height: 44px;
       display: flex;
       justify-content: center;
       align-items: center;
     }
-
     .search-button-text {
-      display: none; /* Hide the word "Search" on mobile */
+      display: none;
     }
-
     .search-button-icon {
-      display: inline; /* Show the magnifying glass icon on mobile */
+      display: inline;
     }
   }
 
@@ -645,12 +623,14 @@ const styles = `
     z-index: 100;
   }
 
-  /* The user's profile picture, which is now a button */
   .user-profile-button {
-    background: none;
-    border: 2px solid transparent;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
+    border: 2px solid transparent;
     padding: 0;
+    background-size: cover;
+    background-position: center;
     cursor: pointer;
     transition: border-color 0.2s;
   }
@@ -659,30 +639,21 @@ const styles = `
     border-color: var(--primary-color);
   }
 
-  .user-profile-button img {
-    display: block;
-    height: 36px;  /* Resized icon */
-    width: 36px;
-    border-radius: 50%;
-  }
-
-  /* The popout dropdown menu */
   .auth-dropdown {
     position: absolute;
-    top: calc(100% + 10px); /* Position below the icon */
+    top: calc(100% + 10px);
     right: 0;
     background-color: var(--surface-color);
     border: 1px solid #444;
     border-radius: 8px;
     padding: 0.75rem;
-    width: 220px; /* Set a fixed width */
+    width: 220px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
   }
 
-  /* Styling for the native language selector */
   .auth-dropdown label {
     font-size: 0.9rem;
     color: var(--text-secondary);
@@ -704,7 +675,6 @@ const styles = `
     border-color: var(--primary-color);
   }
 
-  /* Themed Sign Out Button */
   .logout-button {
     background-color: var(--primary-color);
     color: var(--text-primary);
@@ -720,7 +690,6 @@ const styles = `
     background-color: #cc0000;
   }
 
-  /* Google Sign-In Button (from previous step, no changes needed) */
   .login-button {
     display: inline-flex;
     align-items: center;
@@ -1758,35 +1727,39 @@ const App: React.FC = () => {
   
   return (
     <div className="app-container">
-
-      <div className="auth-container">
-          {user ? (
-              <div className="user-info">
-                  <img src={user.photoURL!} alt={user.displayName!} title={user.displayName!} />
-                  {nativeLanguage ? (
-                      <span>Native: {nativeLanguage}</span>
-                  ) : (
-                      <select 
-                          className="native-lang-select" 
-                          onChange={(e) => handleNativeLanguageSelect(e.target.value)} 
-                          defaultValue=""
-                      >
-                          <option value="" disabled>Select Native Language</option>
-                          {supportedLanguages.map(lang => (
-                              <option key={lang} value={lang}>{lang}</option>
-                          ))}
-                      </select>
-                  )}
-                  <button className="logout-button" onClick={handleLogout}>Sign Out</button>
+      <div className="auth-container" ref={authContainerRef}>
+        {!user ? (
+          <button className="login-button" onClick={handleLogin}>
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,5 12,5C14.5,5 16.22,6.17 17.06,6.95L19.25,4.76C17.38,3.16 14.88,2 12,2C6.48,2 2,6.48 2,12C2,17.52 6.48,22 12,22C17.52,22 22,17.52 22,12C22,11.64 21.95,11.31 21.86,11H21.35Z"></path></svg>
+            <span>Sign in with Google</span>
+          </button>
+        ) : (
+          <div>
+            <button
+              className="user-profile-button"
+              onClick={() => setAuthDropdownOpen(!isAuthDropdownOpen)}
+              style={{ backgroundImage: `url(${user.photoURL})` }}
+              title={user.displayName || 'User menu'}
+            />
+            {isAuthDropdownOpen && (
+              <div className="auth-dropdown">
+                <label htmlFor="native-lang-select">Select Native Language</label>
+                <select 
+                    id="native-lang-select"
+                    className="native-lang-select" 
+                    onChange={(e) => handleNativeLanguageSelect(e.target.value)} 
+                    value={nativeLanguage || ''}
+                >
+                    <option value="" disabled>Choose a language</option>
+                    {supportedLanguages.map(lang => (
+                        <option key={lang} value={lang}>{languageToFlagMap[lang]} {lang}</option>
+                    ))}
+                </select>
+                <button className="logout-button" onClick={handleLogout}>Sign Out</button>
               </div>
-          ) : (
-              <button className="login-button" onClick={handleLogin}>
-                <svg viewBox="0 0 24 24">
-                  <path fill="currentColor" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,5 12,5C14.5,5 16.22,6.17 17.06,6.95L19.25,4.76C17.38,3.16 14.88,2 12,2C6.48,2 2,6.48 2,12C2,17.52 6.48,22 12,22C17.52,22 22,17.52 22,12C22,11.64 21.95,11.31 21.86,11H21.35Z"></path>
-                </svg>
-                <span>Sign in</span>
-              </button>
-          )}
+            )}
+          </div>
+        )}
       </div>
 
       {showHelpPopup && <HelpPopup onClose={() => setShowHelpPopup(false)} />}
@@ -1824,58 +1797,23 @@ Langcampus</h1>
               onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchTerm)}
               aria-label="Search for a song"
               onFocus={() => setShowDropdown(true)}
-              onBlur={(e) => {
-                setTimeout(() => {
-                  if (!searchContainerRef.current?.contains(document.activeElement)) {
-                    setShowDropdown(false);
-                  }
-                }, 100);
-              }}
+              onBlur={() => setTimeout(() => { if (!searchContainerRef.current?.contains(document.activeElement)) setShowDropdown(false); }, 150)}
           />
           <button className="search-button" onClick={() => handleSearch(searchTerm)} disabled={loading} aria-label="Search">
-            {loading ? '...' : (
-              <>
-                <span className="search-button-text">Search</span>
-                <span className="search-button-icon">🔍</span>
-              </>
-            )}
+            {loading ? '...' : (<><span className="search-button-text">Search</span><span className="search-button-icon">🔍</span></>)}
           </button>
           {showDropdown && (predictiveSuggestions.length > 0 || searchHistory.length > 0) && (
             <ul className="search-dropdown">
               {isHistoryDropdown ? (
                 <>
-                  <h4 style={{ color: 'var(--text-secondary)' }}>Recent Searches</h4>
-                  {searchHistory.map((historyItem, index) => (
-                    <li
-                      key={index}
-                      className="search-dropdown-item"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleDropdownItemClick(historyItem);
-                      }}
-                    >
-                      {historyItem}
-                    </li>
-                  ))}
-                  <li className="search-dropdown-clear" onClick={handleClearHistory}>
-                      Clear History
-                  </li>
+                  <h4>Recent Searches</h4>
+                  {searchHistory.map((item, index) => <li key={index} className="search-dropdown-item" onMouseDown={() => handleDropdownItemClick(item)}>{item}</li>)}
+                  <li className="search-dropdown-clear" onClick={handleClearHistory}>Clear History</li>
                 </>
               ) : (
                 <>
-                  <h4 style={{ color: 'var(--text-secondary)' }}>Suggestions</h4>
-                  {predictiveSuggestions.map((suggestion, index) => (
-                    <li
-                      key={index}
-                      className="search-dropdown-item"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleDropdownItemClick(suggestion);
-                      }}
-                    >
-                      {suggestion}
-                    </li>
-                  ))}
+                  <h4>Suggestions</h4>
+                  {predictiveSuggestions.map((item, index) => <li key={index} className="search-dropdown-item" onMouseDown={() => handleDropdownItemClick(item)}>{item}</li>)}
                 </>
               )}
             </ul>
