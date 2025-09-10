@@ -220,7 +220,9 @@ export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }
             4.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
             5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.
             6.  FIX: EXTREMELY IMPORTANT: Only use lyrics that are in the user's chosen language of ${language}.
-            7.  CRITICAL TIMING CONSTRAINT: The timestamp for the final question absolutely MUST be at least 20 seconds less than the total video duration (${videoDuration}). Do not place any questions within the last 20 seconds of the video.`
+            7.  CRITICAL TIMING CONSTRAINT: The timestamp for the final question absolutely MUST be at least 20 seconds less than the total video duration (${videoDuration}). Do not place any questions within the last 20 seconds of the video.
+            8.  CRITICAL RULE FOR PRECEDING LYRIC: The 'precedingLyric' MUST be the full line of lyric that comes directly *before* the line that the question is about. The 'precedingLyric' MUST NOT contain the answer or any part of the question itself.`
+
         };
 
         const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;

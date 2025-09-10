@@ -655,13 +655,6 @@ interface QuizQuestion {
   correctAnswer: string;
 }
 
-// --- API CLIENT ---
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set.");
-}
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
 // --- UTILITY FUNCTIONS ---
 const parseISO8601Duration = (duration: string): number => {
   const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
@@ -881,7 +874,18 @@ const App: React.FC = () => {
   const [ttsError, setTtsError] = useState('');
   const [isPlayerReady, setPlayerReady] = useState(false);
   const getInitialLanguage = (): string => {
-  const savedLanguage = localStorage.getItem('selectedLanguage');
+    const urlParams = new URLSearchParams(window.location.search);
+    const langFromUrl = urlParams.get('lang');
+    const supportedLanguages = Object.keys(languageCodeMap);
+
+    // If a valid language is in the URL, use it and save it.
+    if (langFromUrl && supportedLanguages.includes(langFromUrl)) {
+      localStorage.setItem('selectedLanguage', langFromUrl);
+      return langFromUrl;
+    }
+    
+    // Otherwise, fall back to local storage or the default.
+    const savedLanguage = localStorage.getItem('selectedLanguage');
     return savedLanguage || 'English';
   };
   const [language, setLanguage] = useState(getInitialLanguage);
@@ -932,6 +936,24 @@ const App: React.FC = () => {
       handleSelectVideo(videoFromUrl);
     }
   }, []);
+
+  useEffect(() => {
+    // This effect keeps the URL in sync with the app's state
+    const urlParams = new URLSearchParams();
+    urlParams.set('lang', language); // Always include the current language
+    
+    if (selectedVideo) {
+      urlParams.set('video_id', selectedVideo.id.videoId);
+    }
+    
+    const newSearch = urlParams.toString();
+    // Only add the '?' if there are parameters to add
+    const newUrl = `${window.location.pathname}${newSearch ? `?${newSearch}` : ''}`;
+    
+    // Update the URL without reloading the page
+    window.history.pushState({ path: newUrl }, '', newUrl);
+
+  }, [language, selectedVideo]); // Re-run whenever the language or video changes
 
   useEffect(() => {
   const fetchPopularSongs = async () => {
@@ -1001,8 +1023,8 @@ const App: React.FC = () => {
 
       const timeoutId = setTimeout(async () => {
           try {
-              // THIS IS THE CORRECTED LINE: Only send the 'key' and 'q' parameters.
-              const url = `/suggestV3?key=${API_KEY}&q=${encodeURIComponent(searchTerm)}`; // <-- Change to suggestV3
+              // THIS IS THE CORRECTED LINE: Only send the 'q' parameter.
+              const url = `/suggestV3?q=${encodeURIComponent(searchTerm)}`; // <-- Change to suggestV3
               console.log(`[Predictive Search Log]: Making API call to ${url}`);
 
               const response = await fetch(url, { signal: controller.signal });
@@ -1099,88 +1121,52 @@ const App: React.FC = () => {
   };
 
   const playAudio = async (text: string, lang: string) => {
-    // Now this function has access to isAudioPlaying, setIsAudioPlaying, etc.
-    if (isAudioPlaying) {
-      return;
-    }
-    const audioKey = `${text}-${lang}`;
-    if (audioCache[audioKey]) {
-      setIsAudioPlaying(true);
-      audioCache[audioKey].play();
-      audioCache[audioKey].onended = () => {
-        setIsAudioPlaying(false);
-      };
-      return;
-    }
-
-    let success = false;
-
-    try {
-      const languageCode = languageCodeMap[lang];
-      if (!languageCode) {
-        console.error('Unsupported language for TTS:', lang);
-        return;
+      if (isAudioPlaying) {
+          return;
+      }
+      const audioKey = `${text}-${lang}`;
+      if (audioCache[audioKey]) {
+          setIsAudioPlaying(true);
+          audioCache[audioKey].play();
+          audioCache[audioKey].onended = () => {
+              setIsAudioPlaying(false);
+          };
+          return;
       }
 
-      let processedText = text;
-      if (text.trim().length <= 2) {
-        processedText = `<break time="150ms"/>${text}<break time="150ms"/>`;
-      }
+      try {
+          const response = await fetch(`/generateTts?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(lang)}`);
+          if (!response.ok) {
+              throw new Error('Failed to fetch audio from the server');
+          }
+          const data = await response.json();
+          const audioContent = data.audioContent;
 
-      const contentText = `<speak><lang xml:lang="${languageCode}">${processedText}</lang></speak>`;
-
-      const voiceConfig = voiceConfigMap[languageCode] || voiceConfigMap['en-US'];
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro-preview-tts',
-        contents: [{ parts: [{ text: contentText }] }],
-        config: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            ...voiceConfig,
-            languageCode: languageCode
-          },
-        },
-      });
-
-      if (response.candidates && response.candidates.length > 0 && response.candidates[0].content && response.candidates[0].content.parts) {
-        const audioPart = response.candidates[0].content.parts.find(part => part.inlineData && part.inlineData.mimeType.startsWith('audio/'));
-
-        if (audioPart && audioPart.inlineData) {
-          const data = audioPart.inlineData.data;
-          const audioBuffer = base64ToArrayBuffer(data);
+          const audioBuffer = base64ToArrayBuffer(audioContent);
           const audioBlob = pcmToWav(audioBuffer);
           const audioUrl = URL.createObjectURL(audioBlob);
           const audio = new Audio(audioUrl);
 
           audio.onended = () => {
-            setIsAudioPlaying(false);
+              setIsAudioPlaying(false);
           };
 
           audio.play();
           setIsAudioPlaying(true);
 
           setAudioCache(prevCache => ({
-            ...prevCache,
-            [audioKey]: audio
+              ...prevCache,
+              [audioKey]: audio
           }));
-          success = true;
-        } else {
-          console.error('No audio data received from TTS API.');
-        }
-      } else {
-         console.error('Invalid TTS API response structure:', response);
-      }
-    } catch (e) {
-      console.error('Failed to generate or play audio:', e);
-      setIsAudioPlaying(false);
-    }
 
-    if (!success) {
-      console.error('Failed to generate or play audio. Showing error message.');
-      setIsAudioPlaying(false);
-      setTtsError('Sorry, try again...');
-    }
+      } catch (e) {
+          console.error('Failed to generate or play audio:', e);
+          setTtsError('Sorry, try again...');
+      } finally {
+          if (!isAudioPlaying) {
+              setIsAudioPlaying(false);
+          }
+      }
   };
 
   // --- API & LOGIC ---
@@ -1259,9 +1245,6 @@ const App: React.FC = () => {
       setPlayerReady(false);
       setSelectedVideo(video);
       setGameState('QUIZ');
-      
-      // ADD THIS LINE to update the URL
-      window.history.pushState({}, '', `/?video_id=${video.id.videoId}`);
 
     } catch (err: any) {
       setError(err.message || 'An error occurred selecting the video.');
@@ -1309,21 +1292,12 @@ const App: React.FC = () => {
     if (!selectedVideo) return;
     setSummaryLoading(true);
     try {
-      const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
-      const textPart: Part = {
-        text: `Provide a concise summary of the following music video in ${language}. Do not include any pre-text or conversational phrases.`,
-      };
-      const videoPart: Part = {
-        fileData: {
-          mimeType: 'video/youtube',
-          fileUri: videoUrl
-        }
-      };
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: [{ parts: [videoPart, textPart] }],
-      });
-      setSummary(response.text);
+      const response = await fetch(`/getSummary?videoId=${selectedVideo.id.videoId}&language=${language}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch summary from the server');
+      }
+      const data = await response.json();
+      setSummary(data.summary);
     } catch (err) {
       console.error("Failed to fetch summary", err);
       setSummary('Could not generate a summary for this video.');
