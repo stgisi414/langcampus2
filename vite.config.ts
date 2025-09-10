@@ -33,7 +33,17 @@ export default defineConfig(({ mode }) => {
                     target: 'https://us-central1-langcampus-v2-96af4.cloudfunctions.net',
                     changeOrigin: true,
                     rewrite: (path) => path.replace(/^\/suggestV3/, '/suggestV3'), // <-- Change to suggestV3
-                }
+                },
+                '/getSummary': {
+                    target: 'http://127.0.0.1:5001/langcampus-v2-96af4/us-central1/getSummary',
+                    changeOrigin: true,
+                    rewrite: (path) => path.replace(/^\/getSummary/, ''),
+                },
+                '/generateTts': {
+                    target: 'http://127.0.0.1:5001/langcampus-v2-96af4/us-central1/generateTts',
+                    changeOrigin: true,
+                    rewrite: (path) => path.replace(/^\/generateTts/, ''),
+                },
             }
         }
     };

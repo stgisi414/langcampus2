@@ -13,6 +13,7 @@
       { "source": "/searchVideos", "function": "searchVideos" },
       { "source": "/generateQuiz", "function": "generateQuiz" },
       { "source": "/getVideoDetails", "function": "getVideoDetails" },
+      { "source": "/generateTts", "function": "generateTts" },
       {
         "source": "/getPopularVideos", // New rule
         "function": "getPopularVideos"
@@ -25,6 +26,7 @@
           "pinTag": true
         }
       },
+      { "source": "/getSummary", "function": "getSummary" },
       {
         "source": "**",
         "destination": "/index.html"

@@ -1,9 +1,12 @@
-import { onRequest } from "firebase-functions/v2/https"; // This is the corrected line
+import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import axios, { AxiosRequestConfig } from "axios";
 import * as admin from "firebase-admin";
 
+// Use the server-side SDK for most functions
 import { GoogleGenerativeAI, Part, HarmCategory, HarmBlockThreshold, SchemaType, FunctionDeclarationSchema } from "@google/generative-ai";
+// Use the client-side SDK (which has the correct TTS helper) specifically for the TTS function
+import { GoogleGenAI } from "@google/genai";
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -12,13 +15,12 @@ const db = admin.firestore();
 // Define the secrets your functions will need
 const secrets = ["YOUTUBE_KEY", "YOUTUBE_KEY_BACKUP", "SUPADATA_KEY"];
 
-// --- NEW: Reusable YouTube API Requester with Fallback Logic ---
+// --- Reusable YouTube API Requester with Fallback Logic ---
 const youtubeApiRequest = async (config: AxiosRequestConfig) => {
     const PRIMARY_KEY = process.env.YOUTUBE_KEY;
     const BACKUP_KEY = process.env.YOUTUBE_KEY_BACKUP;
     const baseUrl = "https://www.googleapis.com/youtube/v3";
 
-    // Try with the primary key first
     try {
         const fullConfig = {
             ...config,
@@ -29,13 +31,11 @@ const youtubeApiRequest = async (config: AxiosRequestConfig) => {
         const response = await axios(fullConfig);
         return response.data;
     } catch (error: any) {
-        // Check if the error is a quota exceeded error
         const isQuotaError = error.response?.status === 403 &&
                              error.response?.data?.error?.errors?.[0]?.reason === 'quotaExceeded';
 
         if (isQuotaError && BACKUP_KEY) {
             logger.warn("Primary YouTube API key quota exceeded. Falling back to backup key.");
-            // If it's a quota error and a backup key exists, retry with the backup key
             const fallbackConfig = {
                 ...config,
                 url: `${baseUrl}${config.url}`,
@@ -44,15 +44,13 @@ const youtubeApiRequest = async (config: AxiosRequestConfig) => {
             const fallbackResponse = await axios(fallbackConfig);
             return fallbackResponse.data;
         } else {
-            // If it's not a quota error or there's no backup key, throw the original error
             logger.error("YouTube API request failed with a non-quota error or no backup key is available.");
             throw error;
         }
     }
 };
 
-
-// --- suggestV3 FUNCTION (Refactored) ---
+// --- suggestV3 FUNCTION ---
 export const suggestV3 = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
     logger.info("Suggest function triggered", { query: request.query });
     try {
@@ -72,8 +70,7 @@ export const suggestV3 = onRequest({ cors: true, invoker: 'public', secrets }, a
     }
 });
 
-
-// --- getPopularVideos CACHING FUNCTION (Refactored) ---
+// --- getPopularVideos CACHING FUNCTION ---
 export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
     const { language } = request.query;
     if (typeof language !== 'string') {
@@ -130,7 +127,7 @@ export const getPopularVideos = onRequest({ cors: true, invoker: 'public', secre
     }
 });
 
-// --- searchVideos FUNCTION (Refactored) ---
+// --- searchVideos FUNCTION ---
 export const searchVideos = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
     const { q } = request.query;
     if (typeof q !== 'string') {
@@ -149,14 +146,11 @@ export const searchVideos = onRequest({ cors: true, invoker: 'public', secrets }
     }
 });
 
-// --- generateQuiz FUNCTION (No change needed here, but ensure secrets array is updated) ---
+// --- generateQuiz FUNCTION ---
 export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
-    // ... This function's internal logic remains the same ...
-    // Just make sure its "secrets" array includes "YOUTUBE_KEY_BACKUP"
     const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
     const SUPADATA_API_KEY = process.env.SUPADATA_KEY;
     
-    // The rest of this function is unchanged
     if (!YOUTUBE_API_KEY || !SUPADATA_API_KEY) {
         logger.error("API keys are not set in the environment.");
         response.status(500).send("Server configuration error.");
@@ -268,7 +262,8 @@ export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }
         response.status(500).send("Failed to generate quiz.");
     }
 });
-// --- getVideoDetails FUNCTION (Refactored) ---
+
+// --- getVideoDetails FUNCTION ---
 export const getVideoDetails = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
     const { videoId } = request.query;
     if (typeof videoId !== 'string') {
@@ -284,5 +279,140 @@ export const getVideoDetails = onRequest({ cors: true, invoker: 'public', secret
     } catch (error: any) {
         logger.error(`Error in getVideoDetails for videoId "${videoId}":`, error);
         response.status(500).send("Server error during video details fetch.");
+    }
+});
+
+// --- getSummary FUNCTION ---
+export const getSummary = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
+    if (!YOUTUBE_API_KEY) {
+        logger.error("API key is not set in the environment.");
+        response.status(500).send("Server configuration error.");
+        return;
+    }
+
+    const genAI = new GoogleGenerativeAI(YOUTUBE_API_KEY);
+    const { videoId, language } = request.query;
+
+    if (typeof videoId !== 'string' || typeof language !== 'string') {
+        response.status(400).send("Missing 'videoId' or 'language' parameter.");
+        return;
+    }
+
+    try {
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const textPart: Part = {
+            text: `Provide a concise summary of the following music video in ${language}. Do not include any pre-text or conversational phrases.`,
+        };
+        const videoPart: Part = {
+            fileData: {
+                mimeType: 'video/youtube',
+                fileUri: videoUrl
+            }
+        };
+
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [videoPart, textPart] }],
+        });
+
+        const summary = result.response?.text();
+        if (summary) {
+            response.status(200).send({ summary });
+        } else {
+            throw new Error("Could not generate a summary for this video.");
+        }
+    } catch (error: any) {
+        logger.error(`Error generating summary for videoId "${videoId}":`, error);
+        response.status(500).send("Failed to generate summary.");
+    }
+});
+
+// --- generateTts FUNCTION (DEFINITIVE FIX) ---
+export const generateTts = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
+    if (!YOUTUBE_API_KEY) {
+        logger.error("API key is not set in the environment.");
+        response.status(500).send("Server configuration error.");
+        return;
+    }
+    
+    // Use the client-side SDK here because it works correctly for the TTS model
+    const genAI = new GoogleGenAI({ apiKey: YOUTUBE_API_KEY });
+
+    const { text, lang } = request.query;
+
+    if (typeof text !== 'string' || typeof lang !== 'string') {
+        response.status(400).send("Missing 'text' or 'lang' parameter.");
+        return;
+    }
+
+    try {
+        const languageCodeMap: Record<string, string> = {
+            'English': 'en-US', 'Spanish': 'es-US', 'French': 'fr-FR', 'German': 'de-DE',
+            'Japanese': 'ja-JP', 'Korean': 'ko-KR', 'Italian': 'it-IT', 'Portuguese': 'pt-BR',
+            'Russian': 'ru-RU', 'Arabic': 'ar-EG', 'Chinese': 'zh-CN', 'Hindi': 'hi-IN',
+            'Turkish': 'tr-TR', 'Polish': 'pl-PL', 'Dutch': 'nl-NL', 'Swedish': 'sv-SE',
+            'Finnish': 'fi-FI',
+        };
+
+        const voiceConfigMap: Record<string, any> = {
+            'en-US': { prebuiltVoiceConfig: { voiceName: 'Kore' } }, 'es-US': { prebuiltVoiceConfig: { voiceName: 'Puck' } },
+            'fr-FR': { prebuiltVoiceConfig: { voiceName: 'Leda' } }, 'de-DE': { prebuiltVoiceConfig: { voiceName: 'Charon' } },
+            'ja-JP': { prebuiltVoiceConfig: { voiceName: 'Aoede' } }, 'ko-KR': { prebuiltVoiceConfig: { voiceName: 'Orus' } },
+            'it-IT': { prebuiltVoiceConfig: { voiceName: 'Fenrir' } }, 'pt-BR': { prebuiltVoiceConfig: { voiceName: 'Umbriel' } },
+            'ru-RU': { prebuiltVoiceConfig: { voiceName: 'Iapetus' } }, 'ar-EG': { prebuiltVoiceConfig: { voiceName: 'Algieba' } },
+            'zh-CN': { prebuiltVoiceConfig: { voiceName: 'Achernar' } }, 'hi-IN': { prebuiltVoiceConfig: { voiceName: 'Alnilam' } },
+            'tr-TR': { prebuiltVoiceConfig: { voiceName: 'Gacrux' } }, 'pl-PL': { prebuiltVoiceConfig: { voiceName: 'Pulcherrima' } },
+            'nl-NL': { prebuiltVoiceConfig: { voiceName: 'Achird' } }, 'sv-SE': { prebuiltVoiceConfig: { voiceName: 'Zubenelgenubi' } },
+            'fi-FI': { prebuiltVoiceConfig: { voiceName: 'Vindemiatrix' } },
+        };
+
+        const languageCode = languageCodeMap[lang];
+        if (!languageCode) {
+            throw new Error(`Unsupported language: ${lang}`);
+        }
+
+        let processedText = text;
+        if (text.trim().length <= 2) {
+            processedText = `<break time="150ms"/>${text}<break time="150ms"/>`;
+        }
+
+        const contentText = `<speak><lang xml:lang="${languageCode}">${processedText}</lang></speak>`;
+        const voiceConfig = voiceConfigMap[languageCode] || voiceConfigMap['en-US'];
+
+        // Replicating the exact, working structure from the original client-side code
+        const ttsResponse = await genAI.models.generateContent({
+            model: 'gemini-2.5-flash-preview-tts',
+            contents: [{ parts: [{ text: contentText }] }],
+            config: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                    ...voiceConfig,
+                    languageCode: languageCode
+                },
+            },
+        });
+
+        const candidate = ttsResponse.candidates?.[0];
+
+        // This safety check resolves the "Object is possibly 'undefined'" error
+        if (!candidate || !candidate.content || !candidate.content.parts) {
+            throw new Error("Invalid TTS API response structure: No valid candidates or content found.");
+        }
+        
+        const audioPart = candidate.content.parts.find((part: any) => part.inlineData);
+
+        if (audioPart && audioPart.inlineData) {
+            response.setHeader('Content-Type', 'application/json');
+            response.status(200).send({ audioContent: audioPart.inlineData.data });
+            return;
+        }
+
+        throw new Error("No audio data received from TTS API.");
+
+    } catch (error: any) {
+        logger.error(`Error generating TTS for text "${text}" in language "${lang}":`, error.response?.data || error.message);
+        response.status(500).send("Failed to generate audio.");
     }
 });
