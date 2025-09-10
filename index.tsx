@@ -12,7 +12,7 @@ const styles = `
     text-align: center;
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 2rem;[]
     min-height: 100vh;
   }
 
@@ -878,6 +878,7 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<'SEARCH' | 'RESULTS' | 'QUIZ' | 'END' | 'POST_QUIZ_PLAYBACK'>('SEARCH');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [ttsError, setTtsError] = useState('');
   const [isPlayerReady, setPlayerReady] = useState(false);
   const getInitialLanguage = (): string => {
   const savedLanguage = localStorage.getItem('selectedLanguage');
@@ -1042,6 +1043,15 @@ const App: React.FC = () => {
       }
   }, [searchHistory]);
 
+  useEffect(() => {
+    if (ttsError) {
+      const timer = setTimeout(() => {
+          setTtsError('');
+      }, 5000); // 5000 milliseconds = 5 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [ttsError]);
+
   // Helper functions are now inside the component
   const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
       const binaryString = window.atob(base64);
@@ -1103,17 +1113,27 @@ const App: React.FC = () => {
       return;
     }
 
+    let success = false;
+
     try {
       const languageCode = languageCodeMap[lang];
       if (!languageCode) {
         console.error('Unsupported language for TTS:', lang);
         return;
       }
+
+      let processedText = text;
+      if (text.trim().length <= 2) {
+        processedText = `<break time="150ms"/>${text}<break time="150ms"/>`;
+      }
+
+      const contentText = `<speak><lang xml:lang="${languageCode}">${processedText}</lang></speak>`;
+
       const voiceConfig = voiceConfigMap[languageCode] || voiceConfigMap['en-US'];
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-preview-tts',
-        contents: [{ parts: [{ text: text }] }],
+        model: 'gemini-2.5-pro-preview-tts',
+        contents: [{ parts: [{ text: contentText }] }],
         config: {
           responseModalities: ['AUDIO'],
           speechConfig: {
@@ -1122,8 +1142,6 @@ const App: React.FC = () => {
           },
         },
       });
-
-      console.log('[TTS Log]: Full API response:', response);
 
       if (response.candidates && response.candidates.length > 0 && response.candidates[0].content && response.candidates[0].content.parts) {
         const audioPart = response.candidates[0].content.parts.find(part => part.inlineData && part.inlineData.mimeType.startsWith('audio/'));
@@ -1146,6 +1164,7 @@ const App: React.FC = () => {
             ...prevCache,
             [audioKey]: audio
           }));
+          success = true;
         } else {
           console.error('No audio data received from TTS API.');
         }
@@ -1155,6 +1174,12 @@ const App: React.FC = () => {
     } catch (e) {
       console.error('Failed to generate or play audio:', e);
       setIsAudioPlaying(false);
+    }
+
+    if (!success) {
+      console.error('Failed to generate or play audio. Showing error message.');
+      setIsAudioPlaying(false);
+      setTtsError('Sorry, try again...');
     }
   };
 
@@ -1286,7 +1311,7 @@ const App: React.FC = () => {
     try {
       const videoUrl = `https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`;
       const textPart: Part = {
-        text: `Please provide a concise summary of the following music video in ${language}.`,
+        text: `Provide a concise summary of the following music video in ${language}. Do not include any pre-text or conversational phrases.`,
       };
       const videoPart: Part = {
         fileData: {
@@ -1295,7 +1320,7 @@ const App: React.FC = () => {
         }
       };
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-pro',
         contents: [{ parts: [videoPart, textPart] }],
       });
       setSummary(response.text);
@@ -1363,6 +1388,16 @@ const App: React.FC = () => {
         playerRef.current.playVideo();
     }
   };
+
+  const handleVideoEnd = (event: { target: YouTubePlayer; data: number }) => {
+      // Check if the video has ended (data === 0) and the quiz is still in progress
+      if (event.data === 0 && isQuizActive) {
+          setIsQuizActive(false);
+          setGameState('END');
+          setShowEndScreen(true);
+          handleFetchSummary();
+      }
+  };
   
   const handleReset = () => {
     setSearchTerm('');
@@ -1410,6 +1445,7 @@ const App: React.FC = () => {
                     videoId={selectedVideo.id.videoId}
                     opts={playerOptions}
                     onReady={onPlayerReady}
+                    onStateChange={handleVideoEnd}
                     className="youtube-container"
                 />
             )}
@@ -1438,6 +1474,7 @@ const App: React.FC = () => {
 
             {isPausedForQuiz && currentQuestion && gameState !== 'POST_QUIZ_PLAYBACK' && (
                 <div className={`quiz-overlay visible`}>
+                    {ttsError && <p className="error-message">{ttsError}</p>}
                     <p>Question {currentQuestionIndex + 1} of {quiz.length}</p>
                     <p className="preceding-lyric">{currentQuestion.precedingLyric}</p>
                     <h2 className="question-text">
