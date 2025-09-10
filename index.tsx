@@ -2,11 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, Part, Type } from '@google/genai';
 import YouTube from 'react-youtube';
+import { initializeApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import type { YouTubePlayer } from 'react-youtube';
 
 // --- STYLES (UPDATED) ---
 const styles = `
   .app-container {
+    position: relative;
     width: 100%;
     max-width: 900px;
     text-align: center;
@@ -634,7 +637,126 @@ const styles = `
       display: inline; /* Show the magnifying glass icon on mobile */
     }
   }
+
+  .auth-container {
+    position: absolute;
+    top: 1.5rem;
+    right: 2rem;
+    z-index: 100;
+  }
+
+  /* The user's profile picture, which is now a button */
+  .user-profile-button {
+    background: none;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .user-profile-button:hover {
+    border-color: var(--primary-color);
+  }
+
+  .user-profile-button img {
+    display: block;
+    height: 36px;  /* Resized icon */
+    width: 36px;
+    border-radius: 50%;
+  }
+
+  /* The popout dropdown menu */
+  .auth-dropdown {
+    position: absolute;
+    top: calc(100% + 10px); /* Position below the icon */
+    right: 0;
+    background-color: var(--surface-color);
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 0.75rem;
+    width: 220px; /* Set a fixed width */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  /* Styling for the native language selector */
+  .auth-dropdown label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-align: left;
+  }
+  
+  .native-lang-select {
+    background-color: #333;
+    color: var(--text-primary);
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 0.5rem;
+    width: 100%;
+    font-size: 1rem;
+  }
+  
+  .native-lang-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  /* Themed Sign Out Button */
+  .logout-button {
+    background-color: var(--primary-color);
+    color: var(--text-primary);
+    border: none;
+    border-radius: 4px;
+    padding: 0.6rem;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  .logout-button:hover {
+    background-color: #cc0000;
+  }
+
+  /* Google Sign-In Button (from previous step, no changes needed) */
+  .login-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1.5rem;
+    font-size: 1rem;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500;
+    background-color: #4285F4;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  .login-button:hover {
+    background-color: #357ae8;
+  }
+  .login-button svg {
+    width: 24px;
+    height: 24px;
+  }
 `;
+
+// --- Firebase Configuration ---
+const firebaseConfig = {
+  apiKey: "AIzaSyAmyABNtvXOzpl0_O4s7-6rZQT-rNk5szg",
+  authDomain: "langcampus-v2-96af4.firebaseapp.com",
+  projectId: "langcampus-v2-96af4",
+  storageBucket: "langcampus-v2-96af4.firebasestorage.app",
+  messagingSenderId: "999949510081",
+  appId: "1:999949510081:web:3101f8a25c35a8c1c7bb40"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 // --- TYPES ---
 interface YouTubeVideo {
@@ -903,6 +1025,13 @@ const App: React.FC = () => {
   const [isSummaryLoading, setSummaryLoading] = useState(false);
   const [popularSongs, setPopularSongs] = useState<YouTubeVideo[]>([]);
   const [popularSongsLoading, setPopularSongsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [nativeLanguage, setNativeLanguage] = useState<string | null>(localStorage.getItem('nativeLanguage'));
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [translatedText, setTranslatedText] = useState<Record<string, string>>({});
+  const [isAuthDropdownOpen, setAuthDropdownOpen] = useState(false);
+  const authContainerRef = useRef<HTMLDivElement>(null);
+
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -1073,6 +1202,71 @@ const App: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [ttsError]);
+
+  useEffect(() => {
+      getRedirectResult(auth)
+          .then((result) => {
+              if (result) {
+                  setUser(result.user);
+              }
+          })
+          .catch((error) => console.error("Error getting redirect result", error));
+
+      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+      });
+
+      return () => unsubscribe();
+  }, []);
+
+   useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+          if (authContainerRef.current && !authContainerRef.current.contains(event.target as Node)) {
+              setAuthDropdownOpen(false);
+          }
+      };
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [authContainerRef]);
+
+  const handleLogin = async () => {
+      const provider = new GoogleAuthProvider();
+      try {
+          await signInWithRedirect(auth, provider);
+      } catch (error) {
+          console.error("Error signing in with Google", error);
+      }
+  };
+  
+  const handleLogout = async () => {
+      await signOut(auth);
+      localStorage.removeItem('nativeLanguage');
+      setNativeLanguage(null);
+      setAuthDropdownOpen(false); // Close dropdown on logout
+  };
+
+  const handleNativeLanguageSelect = (lang: string) => {
+      if (lang) {
+          localStorage.setItem('nativeLanguage', lang);
+          setNativeLanguage(lang);
+          setTimeout(() => setAuthDropdownOpen(false), 300); // Close dropdown after selection
+      }
+  };
+
+  const handleTranslate = async (text: string) => {
+    if (!nativeLanguage || nativeLanguage === language) return;
+    
+    try {
+      const response = await fetch(`/translateText?text=${encodeURIComponent(text)}&targetLang=${nativeLanguage}&sourceLang=${language}`);
+      if (!response.ok) {
+        throw new Error('Failed to translate text');
+      }
+      const data = await response.json();
+      setTranslatedText(prev => ({...prev, [text]: data.translatedText}));
+    } catch (error) {
+      console.error("Translation error:", error);
+    }
+  };
 
   // Helper functions are now inside the component
   const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
@@ -1472,7 +1666,15 @@ const App: React.FC = () => {
                                     onClick={() => handleAnswer(option)}
                                     disabled={answered}
                                 >
-                                    {option}
+                                    {translatedText[option] || option}
+                                    {user && nativeLanguage && nativeLanguage !== language && (
+                                        <button className="translate-button" onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleTranslate(option);
+                                        }}>
+                                            🌐
+                                        </button>
+                                    )}
                                     <button 
                                       className="tts-button" 
                                       onClick={(e) => {
@@ -1556,6 +1758,37 @@ const App: React.FC = () => {
   
   return (
     <div className="app-container">
+
+      <div className="auth-container">
+          {user ? (
+              <div className="user-info">
+                  <img src={user.photoURL!} alt={user.displayName!} title={user.displayName!} />
+                  {nativeLanguage ? (
+                      <span>Native: {nativeLanguage}</span>
+                  ) : (
+                      <select 
+                          className="native-lang-select" 
+                          onChange={(e) => handleNativeLanguageSelect(e.target.value)} 
+                          defaultValue=""
+                      >
+                          <option value="" disabled>Select Native Language</option>
+                          {supportedLanguages.map(lang => (
+                              <option key={lang} value={lang}>{lang}</option>
+                          ))}
+                      </select>
+                  )}
+                  <button className="logout-button" onClick={handleLogout}>Sign Out</button>
+              </div>
+          ) : (
+              <button className="login-button" onClick={handleLogin}>
+                <svg viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,5 12,5C14.5,5 16.22,6.17 17.06,6.95L19.25,4.76C17.38,3.16 14.88,2 12,2C6.48,2 2,6.48 2,12C2,17.52 6.48,22 12,22C17.52,22 22,17.52 22,12C22,11.64 21.95,11.31 21.86,11H21.35Z"></path>
+                </svg>
+                <span>Sign in</span>
+              </button>
+          )}
+      </div>
+
       {showHelpPopup && <HelpPopup onClose={() => setShowHelpPopup(false)} />}
       <header onClick={handleReset} style={{ cursor: 'pointer' }}>
         <h1 style={{ letterSpacing: '-0.09925em' }}>

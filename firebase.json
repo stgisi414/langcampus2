@@ -15,6 +15,9 @@
       { "source": "/getVideoDetails", "function": "getVideoDetails" },
       { "source": "/generateTts", "function": "generateTts" },
       {
+        "source": "/translateText", "function": "translateText"
+      },
+      {
         "source": "/getPopularVideos", // New rule
         "function": "getPopularVideos"
       },

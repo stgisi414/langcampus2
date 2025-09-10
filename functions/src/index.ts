@@ -418,3 +418,37 @@ export const generateTts = onRequest({ cors: true, invoker: 'public', secrets },
         response.status(500).send("Failed to generate audio.");
     }
 });
+
+// --- translateText FUNCTION ---
+export const translateText = onRequest({ cors: true, invoker: 'public', secrets }, async (request, response) => {
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_KEY;
+    if (!YOUTUBE_API_KEY) {
+        logger.error("API key is not set in the environment.");
+        response.status(500).send("Server configuration error.");
+        return;
+    }
+
+    const genAI = new GoogleGenerativeAI(YOUTUBE_API_KEY);
+    const { text, targetLang, sourceLang } = request.query;
+
+    if (typeof text !== 'string' || typeof targetLang !== 'string' || typeof sourceLang !== 'string') {
+        response.status(400).send("Missing 'text', 'targetLang', or 'sourceLang' parameter.");
+        return;
+    }
+
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+        const prompt = `Translate the following text from ${sourceLang} to ${targetLang}: "${text}"`;
+        const result = await model.generateContent(prompt);
+        const translatedText = result.response?.text();
+
+        if (translatedText) {
+            response.status(200).send({ translatedText });
+        } else {
+            throw new Error("Could not translate the text.");
+        }
+    } catch (error: any) {
+        logger.error(`Error translating text:`, error);
+        response.status(500).send("Failed to translate text.");
+    }
+});
