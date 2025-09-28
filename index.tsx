@@ -1,3 +1,35 @@
+// --- NEW SCRIPT FOR BROWSER REDIRECTION ---
+// This script runs immediately to handle redirects for both iOS and Android.
+(function() {
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const currentUrl = window.location.href;
+  
+  // Check for iOS devices
+  const isIos = userAgent.includes('iphone') || userAgent.includes('ipad');
+  if (isIos) {
+    const isNaverIOS = userAgent.includes('naver(inapp;');
+    // Correctly allows Chrome ('crios') and Safari
+    const isGenericIOSWebView = !userAgent.includes('safari') && !userAgent.includes('crios');
+    if (isNaverIOS || isGenericIOSWebView) {
+      window.location.href = 'x-safari-' + currentUrl;
+      return;
+    }
+  }
+
+  // Check for Android devices
+  const isAndroid = userAgent.includes('android');
+  if (isAndroid) {
+    const isNaverAndroid = userAgent.includes('naver');
+    const isGenericAndroidWebView = userAgent.includes('wv');
+
+    if (isNaverAndroid || isGenericAndroidWebView) {
+      // Android Intent to force open in Chrome
+      const intentUrl = currentUrl.replace(/https?:\/\//, 'intent://');
+      window.location.href = `${intentUrl}#Intent;scheme=https;package=com.android.chrome;end`;
+    }
+  }
+})();
+
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import ReactDOM from "react-dom/client";
 import { GoogleGenAI, Part, Type } from "@google/genai";
@@ -827,6 +859,20 @@ const HelpPopup: React.FC<{ onClose: () => void }> = ({ onClose }) => (
   </div>
 );
 
+// --- NEW: Browser Error Popup Component ---
+const BrowserErrorPopup: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+  <div className="help-popup-overlay">
+    <div className="help-popup-content">
+      <button className="help-popup-close-button" onClick={onClose}>×</button>
+      <h3 style={{ color: 'var(--error-color)', marginTop: 0 }}>Unsupported Browser</h3>
+      <p>To sign in with Google, you must open this page in your main browser (e.g., Safari or Chrome).</p>
+      <p style={{ fontSize: '0.9rem', marginTop: '1rem' }}>
+        <strong>Instructions:</strong> Tap the 'More' or 'Share' button in the browser toolbar and select 'Open in Safari' or 'Open in default browser'.
+      </p>
+    </div>
+  </div>
+);
+
 // NEW: Maps friendly language names to BCP-47 codes and prebuilt voices
 const languageCodeMap = {
   English: "en-US",
@@ -1015,6 +1061,7 @@ const LandingComponent: React.FC<{
 
 const App: React.FC = () => {
   // --- STATE ---
+  const [showBrowserErrorModal, setShowBrowserErrorModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
@@ -1085,6 +1132,28 @@ const App: React.FC = () => {
   );
 
   // --- LIFECYCLE ---
+  useEffect(() => {
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIos = userAgent.includes('iphone') || userAgent.includes('ipad');
+    const isAndroid = userAgent.includes('android');
+    let isDisallowed = false;
+
+    if (isIos) {
+        const isNaverIOS = userAgent.includes('naver(inapp;');
+        const isGenericIOSWebView = !userAgent.includes('safari') && !userAgent.includes('crios');
+        if (isNaverIOS || isGenericIOSWebView) isDisallowed = true;
+    } else if (isAndroid) {
+        const isNaverAndroid = userAgent.includes('naver');
+        const isGenericAndroidWebView = userAgent.includes('wv');
+        if (isNaverAndroid || isGenericAndroidWebView) isDisallowed = true;
+    }
+    
+    if (isDisallowed) {
+        // This is a fallback in case the redirect script fails
+        setShowBrowserErrorModal(true);
+    }
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("selectedLanguage", language);
   }, [language]);
@@ -1279,12 +1348,18 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogin = async () => {
+    // This check acts as a final safety net
+    if (showBrowserErrorModal) {
+      // If the state is already true, don't even try to log in.
+      return;
+    }
     const provider = new GoogleAuthProvider();
     try {
-      // Trigger the popup. onAuthStateChanged will handle the result.
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Error signing in with Google popup", error);
+      // If any other login error occurs, also show the browser error modal
+      setShowBrowserErrorModal(true);
     }
   };
 
@@ -1735,6 +1810,7 @@ const App: React.FC = () => {
       </div>
 
       {showHelpPopup && <HelpPopup onClose={() => setShowHelpPopup(false)} />}
+      {showBrowserErrorModal && <BrowserErrorPopup onClose={() => setShowBrowserErrorModal(false)} />}
       {isTranslationPopupOpen && (
         <TranslationPopup
           content={translationPopupContent}
