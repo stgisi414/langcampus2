@@ -445,6 +445,21 @@ const styles = `
     gap: 0.5rem;
   }
 
+  .exchange-button {
+    background: transparent;
+    border: none;
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .exchange-button:hover {
+    color: #cc0000;
+  }
+
   .footer-logo {
     height: 1.2em;
     vertical-align: middle;
@@ -619,7 +634,7 @@ const styles = `
 
   @media (max-width: 600px) {
     .app-footer {
-      flex-direction: row; 
+      flex-direction: column;
       align-items: center; 
       gap: 1rem;
     }
@@ -977,15 +992,61 @@ const LandscapeNotifier: React.FC = () => (
   </div>
 );
 
+const AboutLangcampusExchangeModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+  <div className="help-popup-overlay">
+    <div className="help-popup-content">
+      <button className="help-popup-close-button" onClick={onClose}>
+        ×
+      </button>
+      <h3>Discover Langcampus Exchange</h3>
+      <p>
+        <strong>Langcampus Exchange</strong> is our other platform for AI-powered conversational practice.
+      </p>
+      <ul>
+        <li>
+          <strong>AI Chat Partners:</strong> Find AI partners with unique personalities and interests.
+        </li>
+        <li>
+          <strong>Real-time Corrections:</strong> Get instant feedback on your grammar and vocabulary.
+        </li>
+        <li>
+          <strong>Group Chat:</strong> Create rooms to study with friends and an AI tutor.
+        </li>
+        <li>
+          <strong>Custom Lessons:</strong> Use the "Teach Me" feature for on-demand grammar and vocab lessons.
+        </li>
+      </ul>
+      <p>
+        It's the perfect companion to your listening practice here on <strong>Langcampus Music Quiz</strong>!
+      </p>
+      <div className="button-container" style={{ justifyContent: 'space-between' }}>
+        <button
+            className="action-button finish-listening-button" // Re-using existing style for close
+            onClick={onClose}
+            style={{ backgroundColor: '#555' }}
+          >
+            Close
+          </button>
+        <a
+          href="https://practicefor.fun" // You can change this URL
+          target="_blank"
+          rel="noopener noreferrer"
+          className="action-button"
+        >
+          Try Langcampus Exchange
+        </a>
+      </div>
+    </div>
+  </div>
+);
+
 // NEW: Footer component
-const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
+const Footer: React.FC<{ onHelpClick: () => void; onShowExchangeModal: () => void }> = ({ onHelpClick, onShowExchangeModal }) => (
   <footer className="app-footer">
-    {/* This new div will help us with mobile layout */}
     <div className="footer-credits">
       <span className="footer-powered-by">
         © <span style={{ color: "white" }}>Langcampus</span> powered by
       </span>
-      {/* This inner div groups the logos */}
       <div className="footer-logos">
         <a
           href="https://gemini.google.com"
@@ -1008,6 +1069,11 @@ const Footer: React.FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => (
         </a>
       </div>
     </div>
+    
+    <button className="exchange-button" onClick={onShowExchangeModal}>
+      Try Langcampus Exchange
+    </button>
+    
     <button className="help-button" onClick={onHelpClick}>
       ?
     </button>
@@ -1367,6 +1433,7 @@ const App: React.FC = () => {
   const [translationPopupContent, setTranslationPopupContent] = useState("");
   const [isAuthDropdownOpen, setAuthDropdownOpen] = useState(false);
   const authContainerRef = useRef<HTMLDivElement>(null);
+  const [showExchangeModal, setShowExchangeModal] = useState(false);
 
   // --- REFS ---
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -2103,6 +2170,9 @@ const App: React.FC = () => {
         )}
       </div>
 
+      {showExchangeModal && (
+        <AboutLangcampusExchangeModal onClose={() => setShowExchangeModal(false)} />
+      )}
       {showHelpPopup && <HelpPopup onClose={() => setShowHelpPopup(false)} />}
       {showBrowserErrorModal && <BrowserErrorPopup onClose={() => setShowBrowserErrorModal(false)} />}
       {isTranslationPopupOpen && (
@@ -2453,7 +2523,10 @@ const App: React.FC = () => {
           }
         })()}
       </main>
-      <Footer onHelpClick={() => setShowHelpPopup(true)} />
+      <Footer 
+        onHelpClick={() => setShowHelpPopup(true)} 
+        onShowExchangeModal={() => setShowExchangeModal(true)} 
+      />
     </div>
   );
 };
