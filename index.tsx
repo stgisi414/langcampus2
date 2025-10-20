@@ -34,6 +34,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import ReactDOM from "react-dom/client";
 import { GoogleGenAI, Part, Type } from "@google/genai";
 import YouTube from "react-youtube";
+import { marked } from "marked";
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
@@ -782,12 +783,27 @@ interface YouTubeVideo {
   };
 }
 
+interface MatchingPair {
+  lyric: string;
+  translation: string;
+}
+
 interface QuizQuestion {
+  quizType: "MULTIPLE_CHOICE" | "MATCHING" | "SEQUENCING"; // <--- UPDATED
   timestamp: number;
   precedingLyric: string;
-  question: string;
-  options: string[];
-  correctAnswer: string;
+  
+  // Multiple Choice fields
+  question?: string;
+  options?: string[];
+  correctAnswer?: string;
+  
+  // Matching fields
+  matchingPairs?: MatchingPair[]; // <--- NEW FIELD
+  
+  // Sequencing fields
+  sequenceLines?: string[]; // <--- NEW FIELD
+  correctSequence?: string[]; // <--- NEW FIELD
 }
 
 // --- UTILITY FUNCTIONS ---
@@ -935,21 +951,24 @@ const languageToFlagMap: Record<string, string> = {
 const TranslationPopup: React.FC<{ content: string; onClose: () => void }> = ({
   content,
   onClose,
-}) => (
-  <div className="help-popup-overlay" onClick={onClose}>
-    <div className="help-popup-content" onClick={(e) => e.stopPropagation()}>
-      <button className="help-popup-close-button" onClick={onClose}>
-        ×
-      </button>
-      <h3 style={{ marginTop: "0" }}>Translation & Explanation</h3>
-      <p
-        style={{ whiteSpace: "pre-wrap", maxHeight: "60vh", overflowY: "auto" }}
-      >
-        {content}
-      </p>
+}) => {
+  
+  const htmlContent = marked.parse(content || "");
+  return (
+    <div className="help-popup-overlay" onClick={onClose}>
+      <div className="help-popup-content" onClick={(e) => e.stopPropagation()}>
+        <button className="help-popup-close-button" onClick={onClose}>
+          ×
+        </button>
+        <h3 style={{ marginTop: "0" }}>Translation & Explanation</h3>
+        <div
+          style={{ maxHeight: "60vh", overflowY: "auto" }}
+          dangerouslySetInnerHTML={{ __html: htmlContent }} // <--- CHANGE THIS LINE
+        />
+      </div>
     </div>
-  </div>
-);
+  )
+};
 
 const LandscapeNotifier: React.FC = () => (
   <div className="landscape-notifier">
@@ -1059,6 +1078,230 @@ const LandingComponent: React.FC<{
   </>
 );
 
+// Base props for the new quiz components
+interface QuizComponentProps {
+  question: QuizQuestion;
+  onCorrect: () => void;
+  onIncorrect: () => void;
+  isAudioPlaying: boolean;
+  playAudio: (text: string, lang: string) => void;
+  quizLanguage: string;
+  nativeLanguage: string | null;
+  handleTranslate: (text: string) => void;
+  isAnswered: boolean; // Pass answered state down
+}
+
+// Matching Quiz Component (Simplified Click-to-Match)
+const MatchingQuiz: React.FC<QuizComponentProps> = ({ question, onCorrect, onIncorrect, isAudioPlaying, playAudio, quizLanguage, nativeLanguage, handleTranslate, isAnswered }) => {
+  // FIX 1: Use nullish coalescing (?? []) to ensure the array exists before shuffling.
+  const [leftOptions] = useState(() => shuffleArray(question.matchingPairs ?? []).map(p => p.lyric));
+  const [rightOptions] = useState(() => shuffleArray(question.matchingPairs ?? []).map(p => p.translation));
+  
+  const [selectedLeft, setSelectedLeft] = useState<string | null>(null);
+  const [selectedRight, setSelectedRight] = useState<string | null>(null);
+  const [matchedPairs, setMatchedPairs] = useState<Record<string, string>>({});
+  const [feedback, setFeedback] = useState<'IDLE' | 'CORRECT' | 'INCORRECT'>('IDLE');
+  
+  const correctMap = React.useMemo(() => 
+    // FIX 2: Check for existence of matchingPairs before mapping to avoid error
+    Object.fromEntries((question.matchingPairs ?? []).map(p => [p.lyric, p.translation])), 
+    [question.matchingPairs]
+  );
+  
+  const checkMatch = React.useCallback((lyric: string, translation: string) => {
+    // If we're already waiting for feedback, ignore clicks
+    if (feedback !== 'IDLE') return;
+
+    // Correct Match
+    if (correctMap[lyric] === translation) {
+      const newMatchedPairs = { ...matchedPairs, [lyric]: translation };
+      setMatchedPairs(newMatchedPairs);
+      setSelectedLeft(null);
+      setSelectedRight(null);
+      
+      // Check if all pairs are matched
+      if (Object.keys(newMatchedPairs).length === question.matchingPairs!.length) {
+        setFeedback('CORRECT');
+        setTimeout(onCorrect, 1500);
+      }
+    } 
+    // Incorrect Match: Fail the question and provide feedback
+    else {
+      setFeedback('INCORRECT');
+      setTimeout(onIncorrect, 1500);
+    }
+  }, [correctMap, matchedPairs, onCorrect, onIncorrect, question.matchingPairs, feedback]);
+
+  React.useEffect(() => {
+    if (selectedLeft && selectedRight) {
+      checkMatch(selectedLeft, selectedRight);
+    }
+  }, [selectedLeft, selectedRight, checkMatch]);
+  
+  const handleSelectLeft = (lyric: string) => {
+    if (isAnswered || feedback !== 'IDLE') return;
+    setSelectedLeft(lyric);
+    if (selectedRight && selectedLeft !== lyric) {
+      checkMatch(lyric, selectedRight);
+    }
+  };
+
+  const handleSelectRight = (translation: string) => {
+    if (isAnswered || feedback !== 'IDLE') return;
+    setSelectedRight(translation);
+    if (selectedLeft && selectedRight !== translation) {
+      checkMatch(selectedLeft, translation);
+    }
+  };
+
+  const isComplete = Object.keys(matchedPairs).length === question.matchingPairs!.length;
+  
+  return (
+    <div className="matching-quiz-container">
+      <p className="preceding-lyric">
+        {question.precedingLyric}
+      </p>
+      <h2 className="question-text" style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
+        Match: {quizLanguage} Lyric to {nativeLanguage || 'English'} Translation
+      </h2>
+      <div className="matching-grid options-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <div className="left-column">
+          {leftOptions.map((lyric) => {
+            const isMatched = matchedPairs[lyric] !== undefined;
+            const isCurrentlySelected = selectedLeft === lyric;
+            return (
+              <button 
+                key={lyric} 
+                className={`option-button ${isCurrentlySelected ? 'selected-match' : ''} ${isMatched ? 'correct' : ''}`}
+                onClick={() => handleSelectLeft(lyric)}
+                disabled={isAnswered || isMatched || feedback !== 'IDLE'}
+                style={{ marginBottom: '1rem', width: '100%', opacity: isMatched ? 0.4 : 1 }}
+              >
+                {lyric}
+                <button className="tts-button" onClick={(e) => { e.stopPropagation(); playAudio(lyric, quizLanguage); }} disabled={isAudioPlaying}>🔊</button>
+              </button>
+            );
+          })}
+        </div>
+        <div className="right-column">
+          {rightOptions.map((translation) => {
+            const isMatched = Object.values(matchedPairs).includes(translation);
+            const isCurrentlySelected = selectedRight === translation;
+            return (
+              <button 
+                key={translation} 
+                className={`option-button ${isCurrentlySelected ? 'selected-match' : ''} ${isMatched ? 'correct' : ''}`}
+                onClick={() => handleSelectRight(translation)}
+                disabled={isAnswered || isMatched || feedback !== 'IDLE'}
+                style={{ marginBottom: '1rem', width: '100%', opacity: isMatched ? 0.4 : 1 }}
+              >
+                {translation}
+                {nativeLanguage !== quizLanguage && (
+                    <button className="translate-button" onClick={(e) => { e.stopPropagation(); handleTranslate(translation); }}>🌐</button>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {feedback === 'CORRECT' && <p style={{ color: 'var(--success-color)' }}>All matched correctly!</p>}
+      {feedback === 'INCORRECT' && <p style={{ color: 'var(--error-color)' }}>Incorrect match. Moving on...</p>}
+    </div>
+  );
+};
+
+
+// Sequencing Quiz Component (Click to Reorder)
+const SequencingQuiz: React.FC<QuizComponentProps> = ({ question, onCorrect, onIncorrect, isAudioPlaying, playAudio, quizLanguage, handleTranslate, nativeLanguage, isAnswered }) => {
+  // FIX 3: Use nullish coalescing (?? []) to ensure the array exists before shuffling.
+  const [shuffledLines] = useState(() => shuffleArray(question.sequenceLines ?? []));
+  const [currentSequence, setCurrentSequence] = useState<string[]>([]);
+  const [feedback, setFeedback] = useState<'IDLE' | 'CORRECT' | 'INCORRECT'>('IDLE');
+  
+  const handleLineClick = (line: string) => {
+    if (isAnswered || feedback !== 'IDLE') return;
+    
+    // Check if line is already in the sequence
+    if (currentSequence.includes(line)) {
+      // Remove it (allow user to fix their order)
+      setCurrentSequence(currentSequence.filter(l => l !== line));
+    } else {
+      // Add to sequence
+      const newSequence = [...currentSequence, line];
+      setCurrentSequence(newSequence);
+      
+      if (newSequence.length === shuffledLines.length) {
+        // Check answer
+        const isCorrect = newSequence.every((l, index) => l === question.correctSequence![index]);
+        setFeedback(isCorrect ? 'CORRECT' : 'INCORRECT');
+        
+        if (isCorrect) {
+          setTimeout(onCorrect, 1500);
+        } else {
+          setTimeout(onIncorrect, 1500);
+        }
+      }
+    }
+  };
+
+  return (
+    <div className="sequencing-quiz-container">
+      <h2 className="question-text" style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
+        Put the lyrics in the correct order.
+      </h2>
+      <p className="preceding-lyric">{question.precedingLyric}</p>
+      
+      {/* Target area */}
+      <div className="target-sequence" style={{ border: '1px dashed var(--text-secondary)', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', minHeight: '100px', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(255,255,255,0.05)' }}>
+        {currentSequence.length === 0 && <span style={{color: 'var(--text-secondary)', fontStyle: 'italic'}}>Click the lines below to build the sequence.</span>}
+        {currentSequence.map((line, index) => {
+          const isCorrectPosition = line === question.correctSequence![index];
+          let borderColor = 'var(--surface-color)';
+          if (feedback === 'CORRECT') borderColor = 'var(--success-color)';
+          if (feedback === 'INCORRECT') borderColor = isCorrectPosition ? 'var(--success-color)' : 'var(--error-color)';
+
+          return (
+            <div 
+              key={`seq-${index}`} 
+              className="sequence-line-item" 
+              onClick={() => handleLineClick(line)} // Allow clicking to remove
+              style={{ background: 'var(--surface-color)', padding: '0.5rem', borderRadius: '4px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${borderColor}`, cursor: 'pointer' }}
+            >
+              <span>{index + 1}. {line}</span>
+              <button className="tts-button" onClick={(e) => { e.stopPropagation(); playAudio(line, quizLanguage); }} disabled={isAudioPlaying}>🔊</button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Source area */}
+      <div className="source-lines" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem', maxWidth: '600px', width: '100%' }}>
+        {shuffledLines.map((line) => {
+          const isSelected = currentSequence.includes(line);
+          return (
+            <button
+              key={line}
+              className={`option-button ${isSelected ? 'selected-match' : ''}`}
+              onClick={() => handleLineClick(line)}
+              disabled={isAnswered || isSelected || feedback !== 'IDLE'}
+              style={{ opacity: isSelected ? 0.4 : 1, textAlign: 'left', padding: '1rem' }}
+            >
+              {line}
+              <button className="tts-button" onClick={(e) => { e.stopPropagation(); playAudio(line, quizLanguage); }} disabled={isAudioPlaying}>🔊</button>
+              {nativeLanguage && nativeLanguage !== quizLanguage && (
+                  <button className="translate-button" onClick={(e) => { e.stopPropagation(); handleTranslate(line); }}>🌐</button>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      
+      {feedback === 'CORRECT' && <p style={{ color: 'var(--success-color)' }}>Correct! You got the sequence right.</p>}
+      {feedback === 'INCORRECT' && <p style={{ color: 'var(--error-color)' }}>Incorrect sequence. Moving on...</p>}
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   // --- STATE ---
   const [showBrowserErrorModal, setShowBrowserErrorModal] = useState(false);
@@ -1066,9 +1309,12 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
+  const [matchingActivity, setMatchingActivity] = useState<{ prompt: string; answer: string; }[]>([]);
+  const [sequencingActivity, setSequencingActivity] = useState<string[]>([]);
+  const [currentActivity, setCurrentActivity] = useState<'QUIZ' | 'MATCHING' | 'SEQUENCING' | 'SUMMARY'>('QUIZ');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isQuizActive, setIsQuizActive] = useState(false);
-  const [isPausedForQuiz, setIsPausedForQuiz] = useState(false);
+  const [activeQuestion, setActiveQuestion] = useState<QuizQuestion | null>(null);
   const [answered, setAnswered] = useState(false);
   const [score, setScore] = useState(0);
   const [gameState, setGameState] = useState<
@@ -1600,6 +1846,45 @@ const App: React.FC = () => {
     }
   };
 
+  // NEW: Generalized answer handler helpers
+  const onCorrectAnswer = () => {
+    setAnswered(true);
+    setTimeout(() => {
+        setAnswered(false);
+        const nextIndex = currentQuestionIndex + 1;
+        if (nextIndex < quiz.length) {
+            setCurrentQuestionIndex(nextIndex);
+            setIsPausedForQuiz(false);
+            playerRef.current?.playVideo();
+        } else {
+            setIsQuizActive(false);
+            setGameState("END");
+            setShowEndScreen(true);
+            handleFetchSummary();
+            playerRef.current?.pauseVideo();
+        }
+    }, 2000);
+  };
+
+  const onIncorrectAnswer = () => {
+    setAnswered(true);
+    setTimeout(() => {
+        setAnswered(false);
+        const nextIndex = currentQuestionIndex + 1;
+        if (nextIndex < quiz.length) {
+            setCurrentQuestionIndex(nextIndex);
+            setIsPausedForQuiz(false);
+            playerRef.current?.playVideo();
+        } else {
+            setIsQuizActive(false);
+            setGameState("END");
+            setShowEndScreen(true);
+            handleFetchSummary();
+            playerRef.current?.pauseVideo();
+        }
+    }, 2000);
+  };
+
   const handleStartQuiz = async () => {
     if (!selectedVideo || !isPlayerReady) return;
     setLoading(true);
@@ -1616,7 +1901,10 @@ const App: React.FC = () => {
         );
       }
 
-      const quizData: { questions: QuizQuestion[] } = await response.json();
+      // This will now handle the full data object from your function
+      const quizData = await response.json();
+
+      console.log("RAW QUIZ DATA FROM API:", JSON.stringify(quizData, null, 2));
 
       if (quizData.questions && quizData.questions.length > 0) {
         const processedQuiz = quizData.questions
@@ -1627,6 +1915,10 @@ const App: React.FC = () => {
           .sort((a, b) => a.timestamp - b.timestamp);
 
         setQuiz(processedQuiz);
+        // Safely set the new activities, falling back to an empty array
+        setMatchingActivity(quizData.matching || []);
+        setSequencingActivity(quizData.sequencing || []);
+        
         setIsQuizActive(true);
         playerRef.current?.playVideo();
       } else {
@@ -1661,7 +1953,8 @@ const App: React.FC = () => {
   };
 
   const checkPlayerTime = async () => {
-    if (!playerRef.current || !isPlayerReady || isPausedForQuiz) {
+    // This condition can be simplified
+    if (!playerRef.current || !isPlayerReady || activeQuestion) {
       return;
     }
 
@@ -1674,9 +1967,10 @@ const App: React.FC = () => {
       return;
     }
 
+    // When it's time for a question, set the activeQuestion object
     if (currentTime >= currentQuestion.timestamp) {
       playerRef.current.pauseVideo();
-      setIsPausedForQuiz(true);
+      setActiveQuestion(currentQuestion);
     }
   };
 
@@ -1690,10 +1984,10 @@ const App: React.FC = () => {
 
     setTimeout(() => {
       setAnswered(false);
+      setActiveQuestion(null); // Simply hide the overlay
       const nextIndex = currentQuestionIndex + 1;
       if (nextIndex < quiz.length) {
         setCurrentQuestionIndex(nextIndex);
-        setIsPausedForQuiz(false);
         playerRef.current?.playVideo();
       } else {
         setIsQuizActive(false);
@@ -1734,7 +2028,7 @@ const App: React.FC = () => {
     setQuiz([]);
     setCurrentQuestionIndex(0);
     setIsQuizActive(false);
-    setIsPausedForQuiz(false);
+    setActiveQuestion(null); // Reset the new state
     setAnswered(false);
     setScore(0);
     setGameState("SEARCH");
@@ -1950,7 +2244,7 @@ const App: React.FC = () => {
             return <div className="loader"></div>;
           }
 
-          if (error && gameState !== "QUIZ" && gameState !== "END") {
+          if (error && gameState !== "QUIZ" && gameState !== "END" && gameState !== "POST_QUIZ_PLAYBACK") {
             return (
               <div
                 style={{
@@ -1993,7 +2287,6 @@ const App: React.FC = () => {
 
             case "QUIZ":
             case "END":
-            case "POST_QUIZ_PLAYBACK":
               const playerOptions = {
                 height: "100%",
                 width: "100%",
@@ -2046,7 +2339,7 @@ const App: React.FC = () => {
                         </button>
                       </div>
                     )}
-                    {isPausedForQuiz && currentQuestion && (
+                    {activeQuestion && (
                       <div className={`quiz-overlay visible`}>
                         {ttsError && (
                           <p className="error-message">{ttsError}</p>
@@ -2055,14 +2348,14 @@ const App: React.FC = () => {
                           Question {currentQuestionIndex + 1} of {quiz.length}
                         </p>
                         <p className="preceding-lyric">
-                          {currentQuestion.precedingLyric}
+                          {activeQuestion.precedingLyric}
                         </p>
                         <h2 className="question-text">
-                          {currentQuestion.question}
+                          {activeQuestion.question}
                           <button
                             className="tts-button"
                             onClick={() =>
-                              playAudio(currentQuestion.question, language)
+                              playAudio(activeQuestion.question, language)
                             }
                             disabled={isAudioPlaying}
                           >
@@ -2070,11 +2363,11 @@ const App: React.FC = () => {
                           </button>
                         </h2>
                         <div className="options-grid">
-                          {currentQuestion.options.map((option, index) => {
+                          {activeQuestion.options.map((option, index) => {
                             let buttonClass = "option-button";
                             if (answered)
                               buttonClass +=
-                                option === currentQuestion.correctAnswer
+                                option === activeQuestion.correctAnswer
                                   ? " correct"
                                   : " incorrect";
                             return (
@@ -2104,7 +2397,7 @@ const App: React.FC = () => {
                         </div>
                       </div>
                     )}
-                    {gameState === "END" && showEndScreen && (
+                    {(gameState === "END" || gameState === "POST_QUIZ_PLAYBACK") && showEndScreen && (
                       <div className="quiz-overlay visible">
                         <div className="final-score">
                           <h2>Quiz Complete!</h2>

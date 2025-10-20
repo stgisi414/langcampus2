@@ -199,12 +199,29 @@ export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }
                         required: ["timestamp", "precedingLyric", "question", "options", "correctAnswer"],
                     },
                 },
+                matching: {
+                    type: SchemaType.ARRAY,
+                    description: "An array of 4-5 pairs for a matching activity based on the lyrics. This could be vocabulary words and definitions, or the start and end of phrases.",
+                    items: {
+                        type: SchemaType.OBJECT,
+                        properties: {
+                            prompt: { type: SchemaType.STRING, description: "The item to be matched (e.g., a word or the start of a phrase)." },
+                            answer: { type: SchemaType.STRING, description: "The corresponding correct match." }
+                        },
+                        required: ["prompt", "answer"]
+                    }
+                },
+                sequencing: {
+                    type: SchemaType.ARRAY,
+                    description: "An array of 4-5 consecutive lyric lines from the song that the user should put in the correct order.",
+                    items: { type: SchemaType.STRING }
+                }
             },
-            required: ["questions"],
+            required: ["questions", "matching", "sequencing"],
         };
         
         const textPart: Part = {
-            text: `Please create a fill-in-the-blank lyrics quiz for the provided music video.
+            text: `Please create a fill-in-the-blank lyrics quiz, a matching activity, and a sequencing activity for the provided music video.
             
             Here is additional context for the video:
             - Video Title: "${videoSnippet.title}"
@@ -214,14 +231,14 @@ export const generateQuiz = onRequest({ cors: true, invoker: 'public', secrets }
             - Video Duration: ${videoDuration}
 
             IMPORTANT INSTRUCTIONS:
-            1.  Base the quiz questions *directly* on the provided transcript.
-            2.  Generate as many high-quality questions as possible and distribute them evenly throughout the song.
-            3.  Provide an accurate timestamp (in seconds) from the video for when each question should appear.
-            4.  The user's chosen language is ${language}. Generate the entire quiz (preceding lyric, question, and all options) in ${language}.
-            5.  Ensure all four options for each question are unique and one is clearly the correct answer from the lyrics.
+            1.  Base all activities *directly* on the provided transcript.
+            2.  For the main quiz: Generate as many high-quality questions as possible. Each question in the 'questions' array MUST be an object containing all of the following fields: 'timestamp', 'precedingLyric', 'question', 'options' (an array of 4 strings), and 'correctAnswer'.
+            3.  For the matching activity: Create 4-5 pairs. These can be key vocabulary words from the lyrics and their definitions, or the first half of a lyric and the second half.
+            4.  For the sequencing activity: Select a block of 4-5 consecutive lines from the song for the user to reorder.
+            5.  The user's chosen language is ${language}. Generate ALL content (questions, options, matching prompts/answers, and sequencing lines) in ${language}.
             6.  FIX: EXTREMELY IMPORTANT: Only use lyrics that are in the user's chosen language of ${language}.
-            7.  CRITICAL TIMING CONSTRAINT: The timestamp for the final question absolutely MUST be at least 20 seconds less than the total video duration (${videoDuration}). Do not place any questions within the last 20 seconds of the video.
-            8.  CRITICAL RULE FOR PRECEDING LYRIC: The 'precedingLyric' MUST be the full line of lyric that comes directly *before* the line that the question is about. The 'precedingLyric' MUST NOT contain the answer or any part of the question itself.`
+            7.  CRITICAL TIMING CONSTRAINT: The timestamp for the final quiz question absolutely MUST be at least 20 seconds less than the total video duration (${videoDuration}). Do not place any questions within the last 20 seconds of the video.
+            8.  CRITICAL RULE FOR PRECEDING LYRIC: The 'precedingLyric' MUST be the full line of lyric that comes directly *before* the line that the question is about. It MUST NOT contain the answer or any part of the question itself.`
 
         };
 
@@ -438,7 +455,13 @@ export const translateText = onRequest({ cors: true, invoker: 'public', secrets 
 
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-        const prompt = `Translate the following text from ${sourceLang} to ${targetLang}: "${text}"`;
+        
+        // FIX: Update the prompt to request markdown formatting
+        const prompt = `Translate the following text from ${sourceLang} to ${targetLang}: "${text}". 
+        Additionally, provide a brief explanation of the phrase's meaning or context in the target language.
+        Format your entire response using **Markdown**, with a heading for the translation and a separate section for the explanation. 
+        DO NOT include any conversational pre-text or apologies.`;
+
         const result = await model.generateContent(prompt);
         const translatedText = result.response?.text();
 
