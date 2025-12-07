@@ -14,8 +14,8 @@
     "@google/genai": "^1.13.0",
     "firebase": "^12.2.1",
     "marked": "^13.0.3",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "react-youtube": "^10.1.0"
   },
   "devDependencies": {
